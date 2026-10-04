@@ -3,17 +3,13 @@ name: Deploy Vite app to GitHub Pages
 on:
   push:
     branches: ["main"]
-
-  # Permite executar manualmente a partir do separador Actions
   workflow_dispatch:
 
-# Configura as permissões do GITHUB_TOKEN para permitir o deploy no GitHub Pages
 permissions:
   contents: read
   pages: write
   id-token: write
 
-# Permite apenas um deploy concorrente
 concurrency:
   group: "pages"
   cancel-in-progress: true
@@ -31,7 +27,7 @@ jobs:
           node-version: 20
 
       - name: Install dependencies
-        run: npm install
+        run: npm install --legacy-peer-deps
 
       - name: Build
         run: npm run build
