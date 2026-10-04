@@ -1,0 +1,6 @@
+{
+  "name": "Finanzo - Controle Financeiro Pessoal",
+  "description": "Aplicativo minimalista e moderno de finanças pessoais para celular. Controle de receitas, despesas fixas, variáveis e parceladas com gráficos e resumos mensais.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
