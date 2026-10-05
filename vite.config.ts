@@ -4,20 +4,20 @@ import path from 'path';
 import { defineConfig } from 'vite';
 
 export default defineConfig(() => {
-  return {
-    base: '/finanzo-app/',
-    plugins: [
-      react(),
-      tailwindcss(),
-    ],
-    resolve: {
-      alias: {
-        '@': path.resolve(__dirname, './src'),
-      },
-    },
-    server: {
-      port: 3000,
-      host: '0.0.0.0',
-    }
-  }
+    return {
+        base: '/',
+        plugins: [
+            react(),
+            tailwindcss(),
+        ],
+        resolve: {
+            alias: {
+                '@': path.resolve(__dirname, './src'),
+            },
+        },
+        server: {
+            port: 3000,
+            host: '0.0.0.0',
+        }
+    })
 })
