@@ -16,7 +16,7 @@ import { ActiveTab } from './types/finance';
 import { formatCurrency } from './utils/formatters';
 import { exportMonthToCSV } from './utils/csvExport';
 import { CurrencyVisibilityProvider } from './context/CurrencyVisibilityContext';
-import { Plus, ArrowRight, PieChart, Sparkles, UserCheck, FileSpreadsheet } from 'lucide-react';
+import { Plus, ArrowRight, PieChart, Sparkles, UserCheck, FileSpreadsheet, Calendar, Layers } from 'lucide-react';
 
 export default function App() {
   const {
@@ -47,6 +47,7 @@ export default function App() {
   } = useFinanceStorage();
 
   const [activeTab, setActiveTab] = useState<ActiveTab>('dashboard');
+  const [historyScope, setHistoryScope] = useState<'currentMonth' | 'allMonths'>('currentMonth');
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [isBudgetModalOpen, setIsBudgetModalOpen] = useState(false);
   const [isCategoryModalOpen, setIsCategoryModalOpen] = useState(false);
@@ -140,7 +141,7 @@ export default function App() {
                   </h3>
                   <button
                     onClick={() => setActiveTab('history')}
-                    className="text-xs font-semibold text-teal-700 hover:text-teal-800 flex items-center gap-1"
+                    className="text-xs font-semibold text-teal-700 hover:text-teal-800 flex items-center gap-1 cursor-pointer"
                   >
                     <span>Ver Histórico Completo ({currentMonthTransactions.length})</span>
                     <ArrowRight className="w-3.5 h-3.5" />
@@ -148,7 +149,8 @@ export default function App() {
                 </div>
 
                 <TransactionsList
-                  transactions={currentMonthTransactions.slice(0, 5)}
+                  transactions={currentMonthTransactions}
+                  defaultPageSize={5}
                   categories={allCategories}
                   onDeleteTransaction={deleteTransaction}
                   onUpdateTransaction={updateTransaction}
@@ -165,24 +167,26 @@ export default function App() {
               <div className="px-1 flex items-center justify-between">
                 <div>
                   <h2 className="text-base font-bold text-slate-900">
-                    Histórico Mensal
+                    Histórico de Lançamentos
                   </h2>
                   <p className="text-xs text-slate-500">
-                    Lançamentos registrados para o mês selecionado
+                    {historyScope === 'currentMonth'
+                      ? 'Lançamentos registrados para o mês selecionado'
+                      : 'Todos os lançamentos salvos no aplicativo'}
                   </p>
                 </div>
                 <div className="flex items-center gap-1.5">
                   <button
                     onClick={handleExportCSV}
-                    title="Exportar resumo e lançamentos do mês em CSV"
-                    className="px-2.5 py-1.5 bg-white border border-slate-200 hover:bg-teal-50 hover:border-teal-200 text-slate-700 hover:text-teal-800 rounded-xl text-xs font-semibold flex items-center gap-1.5 shadow-2xs transition-colors active:scale-95"
+                    title="Exportar resumo e lançamentos em CSV"
+                    className="px-2.5 py-1.5 bg-white border border-slate-200 hover:bg-teal-50 hover:border-teal-200 text-slate-700 hover:text-teal-800 rounded-xl text-xs font-semibold flex items-center gap-1.5 shadow-2xs transition-colors active:scale-95 cursor-pointer"
                   >
                     <FileSpreadsheet className="w-3.5 h-3.5 text-teal-600" />
-                    <span>Exportar CSV</span>
+                    <span className="hidden sm:inline">Exportar CSV</span>
                   </button>
                   <button
                     onClick={() => setIsAddModalOpen(true)}
-                    className="px-3 py-1.5 bg-slate-900 text-white rounded-xl text-xs font-semibold flex items-center gap-1 shadow-xs hover:bg-slate-800 transition-colors"
+                    className="px-3 py-1.5 bg-slate-900 text-white rounded-xl text-xs font-semibold flex items-center gap-1 shadow-xs hover:bg-slate-800 transition-colors cursor-pointer"
                   >
                     <Plus className="w-3.5 h-3.5" />
                     <span>Novo</span>
@@ -190,13 +194,42 @@ export default function App() {
                 </div>
               </div>
 
+              {/* Scope Switcher: Mês Selecionado vs Todos os Lançamentos */}
+              <div className="grid grid-cols-2 p-1 bg-slate-200/80 rounded-2xl gap-1 text-xs font-semibold">
+                <button
+                  type="button"
+                  onClick={() => setHistoryScope('currentMonth')}
+                  className={`py-2 px-3 rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                    historyScope === 'currentMonth'
+                      ? 'bg-white text-slate-900 shadow-xs font-bold'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  <Calendar className="w-3.5 h-3.5 text-teal-600" />
+                  <span>Mês Atual ({currentMonthTransactions.length})</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setHistoryScope('allMonths')}
+                  className={`py-2 px-3 rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                    historyScope === 'allMonths'
+                      ? 'bg-white text-slate-900 shadow-xs font-bold'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  <Layers className="w-3.5 h-3.5 text-indigo-600" />
+                  <span>Todos os Registros ({transactions.length})</span>
+                </button>
+              </div>
+
               <TransactionsList
-                transactions={currentMonthTransactions}
+                transactions={historyScope === 'currentMonth' ? currentMonthTransactions : transactions}
                 categories={allCategories}
                 onDeleteTransaction={deleteTransaction}
                 onUpdateTransaction={updateTransaction}
                 onOpenAddModal={() => setIsAddModalOpen(true)}
                 onExportCSV={handleExportCSV}
+                defaultPageSize={10}
               />
             </div>
           )}

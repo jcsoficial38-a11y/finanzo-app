@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   Search,
   Trash2,
@@ -16,6 +16,9 @@ import {
   Pencil,
   Repeat,
   Check,
+  Tag,
+  ChevronLeft,
+  ChevronRight,
 } from 'lucide-react';
 import { Transaction, Category } from '../types/finance';
 import { formatCurrency } from '../utils/formatters';
@@ -42,6 +45,7 @@ interface TransactionsListProps {
   onExportCSV?: () => void;
   emptyMessage?: string;
   showSearch?: boolean;
+  defaultPageSize?: number | 'all';
 }
 
 type FilterKind = 'all' | 'income' | 'expense' | 'fixed' | 'variable' | 'installment';
@@ -55,10 +59,14 @@ export const TransactionsList: React.FC<TransactionsListProps> = ({
   onExportCSV,
   emptyMessage,
   showSearch = true,
+  defaultPageSize = 10,
 }) => {
   const { formatMoney, hideValues } = useCurrencyVisibility();
   const [searchQuery, setSearchQuery] = useState('');
   const [activeFilter, setActiveFilter] = useState<FilterKind>('all');
+  const [selectedCategoryFilter, setSelectedCategoryFilter] = useState<string>('all');
+  const [pageSize, setPageSize] = useState<number | 'all'>(defaultPageSize);
+  const [currentPage, setCurrentPage] = useState<number>(1);
   const [deleteTarget, setDeleteTarget] = useState<Transaction | null>(null);
 
   // Edit Modal State
@@ -106,6 +114,11 @@ export const TransactionsList: React.FC<TransactionsListProps> = ({
   // Filter transactions
   const filteredTransactions = useMemo(() => {
     return transactions.filter((tx) => {
+      // Category filter match
+      if (selectedCategoryFilter !== 'all' && tx.categoryId !== selectedCategoryFilter) {
+        return false;
+      }
+
       // Search match
       const cat = categoriesMap.get(tx.categoryId);
       const matchesSearch =
@@ -123,7 +136,22 @@ export const TransactionsList: React.FC<TransactionsListProps> = ({
 
       return true;
     });
-  }, [transactions, searchQuery, activeFilter, categoriesMap]);
+  }, [transactions, searchQuery, activeFilter, selectedCategoryFilter, categoriesMap]);
+
+  // Pagination calculation
+  const totalItems = filteredTransactions.length;
+  const totalPages = pageSize === 'all' ? 1 : Math.max(1, Math.ceil(totalItems / pageSize));
+
+  // Reset to page 1 when filters change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchQuery, activeFilter, selectedCategoryFilter, pageSize, transactions.length]);
+
+  const paginatedTransactions = useMemo(() => {
+    if (pageSize === 'all') return filteredTransactions;
+    const start = (currentPage - 1) * pageSize;
+    return filteredTransactions.slice(start, start + pageSize);
+  }, [filteredTransactions, currentPage, pageSize]);
 
   const confirmDelete = (deleteAllInstallments: boolean) => {
     if (deleteTarget) {
@@ -239,7 +267,77 @@ export const TransactionsList: React.FC<TransactionsListProps> = ({
             Parcelados
           </button>
         </div>
+
+        {/* Category Filter Dropdown & Badge Row */}
+        <div className="flex items-center justify-between gap-2 pt-1.5 border-t border-slate-100 text-xs">
+          <div className="flex items-center gap-1.5 flex-1 min-w-0">
+            <Tag className="w-3.5 h-3.5 text-teal-600 shrink-0" />
+            <span className="text-[11px] font-semibold text-slate-500 shrink-0">Filtrar por Categoria:</span>
+            <select
+              value={selectedCategoryFilter}
+              onChange={(e) => setSelectedCategoryFilter(e.target.value)}
+              className="flex-1 min-w-0 py-1.5 px-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 focus:outline-hidden focus:border-teal-500 focus:bg-white truncate transition-all cursor-pointer"
+            >
+              <option value="all">Todas as Categorias ({categories.length})</option>
+              <optgroup label="Despesas">
+                {categories
+                  .filter((c) => c.type === 'expense')
+                  .map((cat) => (
+                    <option key={cat.id} value={cat.id}>
+                      {cat.name}
+                    </option>
+                  ))}
+              </optgroup>
+              <optgroup label="Receitas">
+                {categories
+                  .filter((c) => c.type === 'income')
+                  .map((cat) => (
+                    <option key={cat.id} value={cat.id}>
+                      {cat.name}
+                    </option>
+                  ))}
+              </optgroup>
+            </select>
+          </div>
+
+          {selectedCategoryFilter !== 'all' && (
+            <button
+              onClick={() => setSelectedCategoryFilter('all')}
+              className="px-2 py-1 text-[11px] font-semibold text-rose-600 hover:bg-rose-50 rounded-lg transition-colors shrink-0 flex items-center gap-0.5"
+            >
+              <X className="w-3 h-3" />
+              <span>Limpar</span>
+            </button>
+          )}
+        </div>
       </div>
+
+      {/* Counter & Page Size Controls */}
+      {filteredTransactions.length > 0 && (
+        <div className="flex items-center justify-between px-1.5 text-xs text-slate-500">
+          <span className="text-[11px] font-medium">
+            Exibindo <strong className="text-slate-800">{paginatedTransactions.length}</strong> de{' '}
+            <strong className="text-slate-800">{totalItems}</strong> lançamentos
+          </span>
+
+          <div className="flex items-center gap-1">
+            <span className="text-[10px] text-slate-400 hidden xs:inline">Por pág:</span>
+            {([10, 20, 'all'] as const).map((size) => (
+              <button
+                key={String(size)}
+                onClick={() => setPageSize(size)}
+                className={`px-2 py-0.5 rounded-lg text-[11px] font-semibold transition-colors ${
+                  pageSize === size
+                    ? 'bg-slate-800 text-white shadow-2xs'
+                    : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                }`}
+              >
+                {size === 'all' ? `Todos (${totalItems})` : size}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Transaction List Feed */}
       {filteredTransactions.length === 0 ? (
@@ -252,9 +350,9 @@ export const TransactionsList: React.FC<TransactionsListProps> = ({
               Nenhum lançamento encontrado
             </h4>
             <p className="text-xs text-slate-400 mt-0.5">
-              {searchQuery
-                ? 'Tente buscar com outros termos.'
-                : 'Adicione sua primeira transação para este mês.'}
+              {searchQuery || selectedCategoryFilter !== 'all' || activeFilter !== 'all'
+                ? 'Tente ajustar os filtros ou termo de busca.'
+                : 'Nenhum lançamento cadastrado para este período.'}
             </p>
           </div>
           <button
@@ -266,8 +364,9 @@ export const TransactionsList: React.FC<TransactionsListProps> = ({
           </button>
         </div>
       ) : (
-        <div className="bg-white rounded-3xl border border-slate-200/70 shadow-xs divide-y divide-slate-100 overflow-hidden">
-          {filteredTransactions.map((tx) => {
+        <div className="space-y-3">
+          <div className="bg-white rounded-3xl border border-slate-200/70 shadow-xs divide-y divide-slate-100 overflow-hidden">
+            {paginatedTransactions.map((tx) => {
             const cat = categoriesMap.get(tx.categoryId);
             const isIncome = tx.kind === 'income';
 
@@ -375,7 +474,37 @@ export const TransactionsList: React.FC<TransactionsListProps> = ({
             );
           })}
         </div>
-      )}
+
+        {/* Bottom Pagination Nav */}
+        {pageSize !== 'all' && totalPages > 1 && (
+          <div className="flex items-center justify-between p-3 bg-white rounded-2xl border border-slate-200/70 shadow-2xs text-xs">
+            <button
+              type="button"
+              disabled={currentPage <= 1}
+              onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+              className="px-3 py-1.5 rounded-xl border border-slate-200 text-slate-700 font-semibold hover:bg-slate-50 disabled:opacity-40 disabled:pointer-events-none transition-colors flex items-center gap-1 active:scale-95 cursor-pointer"
+            >
+              <ChevronLeft className="w-3.5 h-3.5" />
+              <span>Anterior</span>
+            </button>
+
+            <span className="text-xs font-semibold text-slate-700">
+              Página {currentPage} de {totalPages}
+            </span>
+
+            <button
+              type="button"
+              disabled={currentPage >= totalPages}
+              onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+              className="px-3 py-1.5 rounded-xl border border-slate-200 text-slate-700 font-semibold hover:bg-slate-50 disabled:opacity-40 disabled:pointer-events-none transition-colors flex items-center gap-1 active:scale-95 cursor-pointer"
+            >
+              <span>Próxima</span>
+              <ChevronRight className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        )}
+      </div>
+    )}
 
       {/* Delete Confirmation Modal */}
       {deleteTarget && (

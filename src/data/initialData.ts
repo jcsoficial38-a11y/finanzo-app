@@ -157,47 +157,6 @@ export function getInitialTransactions(): Transaction[] {
       createdAt: Date.now() - 300000,
     },
 
-    // Fixed Expenses (Recurring)
-    {
-      id: 'tx-seed-4',
-      name: 'Aluguel do Apartamento',
-      amount: 1450.0,
-      date: `${yearStr}-${monthStr}-08`,
-      monthKey: currentMonth,
-      kind: 'expense',
-      categoryId: 'exp-moradia',
-      expenseType: 'fixed',
-      isRecurring: true,
-      recurringGroupId: 'rec-seed-aluguel',
-      createdAt: Date.now() - 250000,
-    },
-    {
-      id: 'tx-seed-5',
-      name: 'Internet Fibra + Streaming',
-      amount: 189.9,
-      date: `${yearStr}-${monthStr}-10`,
-      monthKey: currentMonth,
-      kind: 'expense',
-      categoryId: 'exp-contas',
-      expenseType: 'fixed',
-      isRecurring: true,
-      recurringGroupId: 'rec-seed-internet',
-      createdAt: Date.now() - 200000,
-    },
-    {
-      id: 'tx-seed-6',
-      name: 'Plano de Saúde',
-      amount: 320.0,
-      date: `${yearStr}-${monthStr}-12`,
-      monthKey: currentMonth,
-      kind: 'expense',
-      categoryId: 'exp-saude',
-      expenseType: 'fixed',
-      isRecurring: true,
-      recurringGroupId: 'rec-seed-saude',
-      createdAt: Date.now() - 180000,
-    },
-
     // Variable Expenses
     {
       id: 'tx-seed-7',
@@ -233,6 +192,53 @@ export function getInitialTransactions(): Transaction[] {
       createdAt: Date.now() - 90000,
     },
   ];
+
+  // Fixed Expenses (Recurring for current month and next 24 future months)
+  const fixedExpensesSeed = [
+    {
+      id: 'rec-seed-aluguel',
+      name: 'Aluguel do Apartamento',
+      amount: 1450.0,
+      day: 8,
+      categoryId: 'exp-moradia',
+    },
+    {
+      id: 'rec-seed-internet',
+      name: 'Internet Fibra + Streaming',
+      amount: 189.9,
+      day: 10,
+      categoryId: 'exp-contas',
+    },
+    {
+      id: 'rec-seed-saude',
+      name: 'Plano de Saúde',
+      amount: 320.0,
+      day: 12,
+      categoryId: 'exp-saude',
+    },
+  ];
+
+  for (const item of fixedExpensesSeed) {
+    for (let m = 0; m <= 24; m++) {
+      const { date: fDate, monthKey: fMonthKey } = addMonthsToDate(
+        `${yearStr}-${monthStr}-${String(item.day).padStart(2, '0')}`,
+        m
+      );
+      transactions.push({
+        id: m === 0 ? `tx-seed-${item.id}` : `tx-rec-${item.id}-${fMonthKey}`,
+        name: item.name,
+        amount: item.amount,
+        date: fDate,
+        monthKey: fMonthKey,
+        kind: 'expense',
+        categoryId: item.categoryId,
+        expenseType: 'fixed',
+        isRecurring: true,
+        recurringGroupId: item.id,
+        createdAt: Date.now() - 250000 + m,
+      });
+    }
+  }
 
   // Installment Expenses: e.g. Smartphone (4 parcelas de R$ 225,00)
   const installmentGroupId = 'inst-group-smartphone';

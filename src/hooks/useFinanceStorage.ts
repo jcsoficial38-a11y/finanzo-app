@@ -181,48 +181,101 @@ export function useFinanceStorage() {
     localStorage.setItem(STORAGE_KEYS.RECURRING_RULES, JSON.stringify(recurringRules));
   }, [recurringRules]);
 
-  // Automatically project recurring fixed expenses to currentMonthKey if not yet present
+  // Automatically project recurring fixed expenses to all future months (up to 24 months ahead)
   useEffect(() => {
     setTransactions((prevTransactions) => {
       let changed = false;
       const newTxs: Transaction[] = [];
 
+      // 1. Project all rules from recurringRules
       for (const rule of recurringRules) {
-        // If rule starts after this month, don't project
-        if (rule.startMonthKey > currentMonthKey) continue;
-        // If rule ended before this month, don't project
-        if (rule.endMonthKey && currentMonthKey > rule.endMonthKey) continue;
-        // If user deleted this specific month independently, don't project
-        if (rule.excludedMonthKeys && rule.excludedMonthKeys.includes(currentMonthKey)) continue;
+        for (let m = 0; m <= 24; m++) {
+          const { date: fDate, monthKey: targetMonthKey } = addMonthsToDate(`${rule.startMonthKey}-01`, m);
 
-        // Check if an entry for this recurring group already exists in this month
-        const alreadyExists = prevTransactions.some(
-          (t) => t.recurringGroupId === rule.id && t.monthKey === currentMonthKey
-        );
+          // If rule starts after this target month, don't project
+          if (rule.startMonthKey > targetMonthKey) continue;
+          // If rule ended before this target month, don't project
+          if (rule.endMonthKey && targetMonthKey > rule.endMonthKey) continue;
+          // If user deleted this specific month independently, don't project
+          if (rule.excludedMonthKeys && rule.excludedMonthKeys.includes(targetMonthKey)) continue;
 
-        if (!alreadyExists) {
-          const [yearStr, monthStr] = currentMonthKey.split('-');
-          const yearNum = parseInt(yearStr, 10);
-          const monthNum = parseInt(monthStr, 10);
-          const daysInMonth = new Date(yearNum, monthNum, 0).getDate();
-          const day = Math.min(Math.max(1, rule.dayOfMonth || 1), daysInMonth);
-          const date = `${currentMonthKey}-${String(day).padStart(2, '0')}`;
+          // Check if an entry for this recurring group already exists in this month
+          const alreadyExists = prevTransactions.some(
+            (t) =>
+              (t.recurringGroupId === rule.id || t.id === `tx-rec-${rule.id}-${targetMonthKey}`) &&
+              t.monthKey === targetMonthKey
+          );
 
-          newTxs.push({
-            id: `tx-rec-${rule.id}-${currentMonthKey}`,
-            name: rule.name,
-            amount: rule.amount,
-            date,
-            monthKey: currentMonthKey,
-            kind: 'expense',
-            categoryId: rule.categoryId,
-            expenseType: 'fixed',
-            isRecurring: true,
-            recurringGroupId: rule.id,
-            notes: rule.notes,
-            createdAt: Date.now(),
-          });
-          changed = true;
+          if (!alreadyExists) {
+            const [yearStr, monthStr] = targetMonthKey.split('-');
+            const yearNum = parseInt(yearStr, 10);
+            const monthNum = parseInt(monthStr, 10);
+            const daysInMonth = new Date(yearNum, monthNum, 0).getDate();
+            const day = Math.min(Math.max(1, rule.dayOfMonth || 1), daysInMonth);
+            const actualDate = `${targetMonthKey}-${String(day).padStart(2, '0')}`;
+
+            newTxs.push({
+              id: `tx-rec-${rule.id}-${targetMonthKey}`,
+              name: rule.name,
+              amount: rule.amount,
+              date: actualDate,
+              monthKey: targetMonthKey,
+              kind: 'expense',
+              categoryId: rule.categoryId,
+              expenseType: 'fixed',
+              isRecurring: true,
+              recurringGroupId: rule.id,
+              notes: rule.notes,
+              createdAt: Date.now() + m,
+            });
+            changed = true;
+          }
+        }
+      }
+
+      // 2. Self-healing: ensure any existing transaction with expenseType === 'fixed' gets projected forward
+      for (const t of prevTransactions) {
+        if (t.kind === 'expense' && t.expenseType === 'fixed' && t.monthKey) {
+          const groupId = t.recurringGroupId || `rec-fixed-${t.name.toLowerCase().replace(/[^a-z0-9]/g, '-')}`;
+          const day = parseInt(t.date.split('-')[2], 10) || 1;
+
+          for (let m = 1; m <= 24; m++) {
+            const { monthKey: targetMonthKey } = addMonthsToDate(`${t.monthKey}-01`, m);
+            const alreadyExists =
+              prevTransactions.some(
+                (p) =>
+                  (p.recurringGroupId === groupId || p.name === t.name) &&
+                  p.monthKey === targetMonthKey &&
+                  p.expenseType === 'fixed'
+              ) ||
+              newTxs.some(
+                (p) =>
+                  (p.recurringGroupId === groupId || p.name === t.name) &&
+                  p.monthKey === targetMonthKey
+              );
+
+            if (!alreadyExists) {
+              const [yearStr, monthStr] = targetMonthKey.split('-');
+              const daysInMonth = new Date(parseInt(yearStr, 10), parseInt(monthStr, 10), 0).getDate();
+              const actualDate = `${targetMonthKey}-${String(Math.min(day, daysInMonth)).padStart(2, '0')}`;
+
+              newTxs.push({
+                id: `tx-rec-${groupId}-${targetMonthKey}`,
+                name: t.name,
+                amount: t.amount,
+                date: actualDate,
+                monthKey: targetMonthKey,
+                kind: 'expense',
+                categoryId: t.categoryId,
+                expenseType: 'fixed',
+                isRecurring: true,
+                recurringGroupId: groupId,
+                notes: t.notes,
+                createdAt: Date.now() + m,
+              });
+              changed = true;
+            }
+          }
         }
       }
 
@@ -385,8 +438,8 @@ export function useFinanceStorage() {
       if (kind === 'income' || expenseType !== 'installment' || installmentsCount <= 1) {
         let recurringGroupId: string | undefined = undefined;
 
-        // If it's a fixed recurring expense, create the recurring rule
-        if (kind === 'expense' && expenseType === 'fixed' && isRecurring) {
+        // If it's a fixed recurring expense, create the recurring rule and project immediately to next 24 months
+        if (kind === 'expense' && (expenseType === 'fixed' || isRecurring)) {
           recurringGroupId = `rec-grp-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
           const day = parseInt(date.split('-')[2], 10) || 1;
           const newRule: RecurringExpenseRule = {
@@ -400,6 +453,30 @@ export function useFinanceStorage() {
             createdAt: Date.now(),
           };
           setRecurringRules((prev) => [...prev, newRule]);
+
+          const createdFixedTxs: Transaction[] = [];
+          for (let m = 0; m <= 24; m++) {
+            const { date: fDate, monthKey: fMonthKey } = addMonthsToDate(date, m);
+            createdFixedTxs.push({
+              id: m === 0
+                ? `tx-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`
+                : `tx-rec-${recurringGroupId}-${fMonthKey}`,
+              name,
+              amount: Math.abs(amount),
+              date: fDate,
+              monthKey: fMonthKey,
+              kind: 'expense',
+              categoryId,
+              expenseType: 'fixed',
+              isRecurring: true,
+              recurringGroupId,
+              notes,
+              createdAt: Date.now() + m,
+            });
+          }
+
+          setTransactions((prev) => [...createdFixedTxs, ...prev]);
+          return createdFixedTxs;
         }
 
         const newTx: Transaction = {
