@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import { MonthSummary } from '../types/finance';
 import { formatCurrency, formatPercent } from '../utils/formatters';
+import { useCurrencyVisibility } from '../context/CurrencyVisibilityContext';
 
 interface SummaryCardsProps {
   summary: MonthSummary;
@@ -23,6 +24,7 @@ export const SummaryCards: React.FC<SummaryCardsProps> = ({
   summary,
   onEditBudget,
 }) => {
+  const { formatMoney, hideValues } = useCurrencyVisibility();
   const {
     budget,
     totalIncome,
@@ -56,7 +58,7 @@ export const SummaryCards: React.FC<SummaryCardsProps> = ({
               </span>
             </div>
             <div className="text-2xl sm:text-3xl font-bold tracking-tight text-slate-900 mt-1 tabular-nums">
-              {formatCurrency(budget)}
+              {formatMoney(budget)}
             </div>
           </div>
 
@@ -73,7 +75,7 @@ export const SummaryCards: React.FC<SummaryCardsProps> = ({
         <div className="mt-3.5 space-y-1.5">
           <div className="flex items-center justify-between text-xs">
             <span className="text-slate-500 font-medium">
-              Gasto Total: <strong className="text-slate-800 tabular-nums">{formatCurrency(totalExpenses)}</strong>
+              Gasto Total: <strong className="text-slate-800 tabular-nums">{formatMoney(totalExpenses)}</strong>
             </span>
             <span
               className={`font-semibold tabular-nums ${
@@ -107,7 +109,7 @@ export const SummaryCards: React.FC<SummaryCardsProps> = ({
                 isOverBudget ? 'text-rose-600' : 'text-teal-700'
               }`}
             >
-              {formatCurrency(remainingBudget)}
+              {formatMoney(remainingBudget)}
             </span>
           </div>
 
@@ -142,7 +144,7 @@ export const SummaryCards: React.FC<SummaryCardsProps> = ({
               isOverBudget ? 'text-rose-600' : 'text-teal-700'
             }`}
           >
-            {formatCurrency(remainingBudget)}
+            {formatMoney(remainingBudget)}
           </div>
           <span className="text-[10px] text-slate-400 block truncate">
             Orçamento menos Gasto
@@ -156,7 +158,7 @@ export const SummaryCards: React.FC<SummaryCardsProps> = ({
             <span className="truncate">Gasto Total Geral</span>
           </div>
           <div className="text-lg sm:text-xl font-bold text-slate-900 tabular-nums truncate">
-            {formatCurrency(totalExpenses)}
+            {formatMoney(totalExpenses)}
           </div>
           <span className="text-[10px] text-slate-400 block truncate">
             Soma de todos os gastos
@@ -172,7 +174,7 @@ export const SummaryCards: React.FC<SummaryCardsProps> = ({
             <span>Total de Receitas (Rendas)</span>
           </div>
           <div className="text-xl font-bold text-slate-900 tabular-nums">
-            {formatCurrency(totalIncome)}
+            {formatMoney(totalIncome)}
           </div>
         </div>
 
@@ -183,8 +185,7 @@ export const SummaryCards: React.FC<SummaryCardsProps> = ({
               netBalance >= 0 ? 'text-emerald-700' : 'text-rose-600'
             }`}
           >
-            {netBalance >= 0 ? '+' : ''}
-            {formatCurrency(netBalance)}
+            {hideValues ? 'R$ •••••' : `${netBalance >= 0 ? '+' : ''}${formatMoney(netBalance)}`}
           </span>
         </div>
       </div>
@@ -198,7 +199,7 @@ export const SummaryCards: React.FC<SummaryCardsProps> = ({
             <span className="truncate">Gastos Fixos</span>
           </div>
           <div className="text-sm sm:text-base font-bold text-slate-900 tabular-nums truncate">
-            {formatCurrency(totalFixed)}
+            {formatMoney(totalFixed)}
           </div>
           <span className="text-[10px] text-sky-700/70 block truncate">
             Aluguel, contas...
@@ -212,7 +213,7 @@ export const SummaryCards: React.FC<SummaryCardsProps> = ({
             <span className="truncate">Gastos Variáveis</span>
           </div>
           <div className="text-sm sm:text-base font-bold text-slate-900 tabular-nums truncate">
-            {formatCurrency(totalVariable)}
+            {formatMoney(totalVariable)}
           </div>
           <span className="text-[10px] text-amber-700/70 block truncate">
             Mercado, lazer...
@@ -226,7 +227,7 @@ export const SummaryCards: React.FC<SummaryCardsProps> = ({
             <span className="truncate">Parcelados</span>
           </div>
           <div className="text-sm sm:text-base font-bold text-slate-900 tabular-nums truncate">
-            {formatCurrency(totalInstallment)}
+            {formatMoney(totalInstallment)}
           </div>
           <span className="text-[10px] text-violet-700/70 block truncate">
             Cartão & compras

@@ -1,9 +1,18 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
-import { Category, Transaction, MonthSummary, ExpenseType, CategoryType, UserProfile } from '../types/finance';
+import {
+  Category,
+  Transaction,
+  MonthSummary,
+  ExpenseType,
+  CategoryType,
+  UserProfile,
+  RecurringExpenseRule,
+} from '../types/finance';
 import {
   INITIAL_INCOME_CATEGORIES,
   INITIAL_EXPENSE_CATEGORIES,
   getInitialTransactions,
+  getInitialRecurringRules,
 } from '../data/initialData';
 import {
   getCurrentMonthKey,
@@ -20,6 +29,7 @@ const STORAGE_KEYS = {
   DEFAULT_BUDGET: 'finanzo_default_budget_v1',
   CATEGORY_BUDGETS: 'finanzo_category_budgets_v1',
   USER_PROFILE: 'finanzo_user_profile_v1',
+  RECURRING_RULES: 'finanzo_recurring_fixed_rules_v1',
 };
 
 const DEFAULT_MONTHLY_BUDGET = 3500.0;
@@ -127,6 +137,17 @@ export function useFinanceStorage() {
     return DEFAULT_USER_PROFILE;
   });
 
+  // Recurring Fixed Expenses Rules
+  const [recurringRules, setRecurringRules] = useState<RecurringExpenseRule[]>(() => {
+    try {
+      const stored = localStorage.getItem(STORAGE_KEYS.RECURRING_RULES);
+      if (stored) return JSON.parse(stored);
+    } catch {
+      // ignore
+    }
+    return getInitialRecurringRules();
+  });
+
   // Persist to localStorage
   useEffect(() => {
     localStorage.setItem(STORAGE_KEYS.INCOME_CATS, JSON.stringify(incomeCategories));
@@ -155,6 +176,62 @@ export function useFinanceStorage() {
   useEffect(() => {
     localStorage.setItem(STORAGE_KEYS.USER_PROFILE, JSON.stringify(userProfile));
   }, [userProfile]);
+
+  useEffect(() => {
+    localStorage.setItem(STORAGE_KEYS.RECURRING_RULES, JSON.stringify(recurringRules));
+  }, [recurringRules]);
+
+  // Automatically project recurring fixed expenses to currentMonthKey if not yet present
+  useEffect(() => {
+    setTransactions((prevTransactions) => {
+      let changed = false;
+      const newTxs: Transaction[] = [];
+
+      for (const rule of recurringRules) {
+        // If rule starts after this month, don't project
+        if (rule.startMonthKey > currentMonthKey) continue;
+        // If rule ended before this month, don't project
+        if (rule.endMonthKey && currentMonthKey > rule.endMonthKey) continue;
+        // If user deleted this specific month independently, don't project
+        if (rule.excludedMonthKeys && rule.excludedMonthKeys.includes(currentMonthKey)) continue;
+
+        // Check if an entry for this recurring group already exists in this month
+        const alreadyExists = prevTransactions.some(
+          (t) => t.recurringGroupId === rule.id && t.monthKey === currentMonthKey
+        );
+
+        if (!alreadyExists) {
+          const [yearStr, monthStr] = currentMonthKey.split('-');
+          const yearNum = parseInt(yearStr, 10);
+          const monthNum = parseInt(monthStr, 10);
+          const daysInMonth = new Date(yearNum, monthNum, 0).getDate();
+          const day = Math.min(Math.max(1, rule.dayOfMonth || 1), daysInMonth);
+          const date = `${currentMonthKey}-${String(day).padStart(2, '0')}`;
+
+          newTxs.push({
+            id: `tx-rec-${rule.id}-${currentMonthKey}`,
+            name: rule.name,
+            amount: rule.amount,
+            date,
+            monthKey: currentMonthKey,
+            kind: 'expense',
+            categoryId: rule.categoryId,
+            expenseType: 'fixed',
+            isRecurring: true,
+            recurringGroupId: rule.id,
+            notes: rule.notes,
+            createdAt: Date.now(),
+          });
+          changed = true;
+        }
+      }
+
+      if (changed) {
+        return [...newTxs, ...prevTransactions];
+      }
+      return prevTransactions;
+    });
+  }, [currentMonthKey, recurringRules]);
 
   // Current month budget
   const currentMonthBudget = useMemo(() => {
@@ -284,6 +361,7 @@ export function useFinanceStorage() {
       kind: CategoryType;
       categoryId: string;
       expenseType?: ExpenseType;
+      isRecurring?: boolean;
       installmentsCount?: number;
       isTotalAmount?: boolean;
       notes?: string;
@@ -295,6 +373,7 @@ export function useFinanceStorage() {
         kind,
         categoryId,
         expenseType = 'variable',
+        isRecurring = false,
         installmentsCount = 1,
         isTotalAmount = false,
         notes,
@@ -304,6 +383,25 @@ export function useFinanceStorage() {
 
       // Handle normal transaction (Income, or Non-installment expense)
       if (kind === 'income' || expenseType !== 'installment' || installmentsCount <= 1) {
+        let recurringGroupId: string | undefined = undefined;
+
+        // If it's a fixed recurring expense, create the recurring rule
+        if (kind === 'expense' && expenseType === 'fixed' && isRecurring) {
+          recurringGroupId = `rec-grp-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+          const day = parseInt(date.split('-')[2], 10) || 1;
+          const newRule: RecurringExpenseRule = {
+            id: recurringGroupId,
+            name,
+            amount: Math.abs(amount),
+            categoryId,
+            dayOfMonth: day,
+            startMonthKey: baseMonthKey,
+            notes,
+            createdAt: Date.now(),
+          };
+          setRecurringRules((prev) => [...prev, newRule]);
+        }
+
         const newTx: Transaction = {
           id: `tx-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
           name,
@@ -313,6 +411,8 @@ export function useFinanceStorage() {
           kind,
           categoryId,
           expenseType: kind === 'expense' ? expenseType : undefined,
+          isRecurring: Boolean(isRecurring && kind === 'expense' && expenseType === 'fixed'),
+          recurringGroupId,
           notes,
           createdAt: Date.now(),
         };
@@ -356,19 +456,127 @@ export function useFinanceStorage() {
     []
   );
 
+  // Transaction update (allows editing amount and details independently per month)
+  const updateTransaction = useCallback(
+    (
+      transactionId: string,
+      updates: Partial<Transaction>,
+      applyToFutureRecurring = false
+    ) => {
+      let targetRecurringGroupId: string | undefined;
+
+      setTransactions((prev) => {
+        const target = prev.find((t) => t.id === transactionId);
+        if (!target) return prev;
+        targetRecurringGroupId = target.recurringGroupId;
+
+        return prev.map((t) => {
+          if (t.id === transactionId) {
+            return { ...t, ...updates };
+          }
+          // If requested, also apply new name/amount/category to subsequent future months of the same recurring series
+          if (
+            applyToFutureRecurring &&
+            target.recurringGroupId &&
+            t.recurringGroupId === target.recurringGroupId &&
+            t.monthKey > target.monthKey
+          ) {
+            return {
+              ...t,
+              name: updates.name !== undefined ? updates.name : t.name,
+              amount: updates.amount !== undefined ? updates.amount : t.amount,
+              categoryId: updates.categoryId !== undefined ? updates.categoryId : t.categoryId,
+            };
+          }
+          return t;
+        });
+      });
+
+      // Also update the recurring rule template if requested
+      if (applyToFutureRecurring) {
+        setRecurringRules((rules) => {
+          if (!targetRecurringGroupId) {
+            const found = transactions.find((t) => t.id === transactionId);
+            targetRecurringGroupId = found?.recurringGroupId;
+          }
+          if (!targetRecurringGroupId) return rules;
+
+          return rules.map((r) =>
+            r.id === targetRecurringGroupId
+              ? {
+                  ...r,
+                  name: updates.name ?? r.name,
+                  amount: updates.amount !== undefined ? updates.amount : r.amount,
+                  categoryId: updates.categoryId ?? r.categoryId,
+                }
+              : r
+          );
+        });
+      }
+    },
+    [transactions]
+  );
+
   // Transaction deletion
   const deleteTransaction = useCallback(
-    (transactionId: string, deleteAllInstallments = false) => {
+    (
+      transactionId: string,
+      options?: {
+        deleteAllInstallments?: boolean;
+        deleteRecurringMode?: 'single' | 'future';
+      }
+    ) => {
+      const { deleteAllInstallments = false, deleteRecurringMode = 'single' } = options || {};
+
       setTransactions((prev) => {
         const target = prev.find((t) => t.id === transactionId);
         if (!target) return prev;
 
+        // 1. Handle Installments deletion
         if (deleteAllInstallments && target.installmentGroupId) {
-          // Delete all installments with this group ID
           return prev.filter((t) => t.installmentGroupId !== target.installmentGroupId);
         }
 
-        // Just delete this specific transaction
+        // 2. Handle Recurring Fixed Expense deletion
+        if (target.recurringGroupId) {
+          if (deleteRecurringMode === 'future') {
+            // Stop recurrence from this month onwards
+            setRecurringRules((rules) =>
+              rules.map((r) => {
+                if (r.id === target.recurringGroupId) {
+                  const prevMonth = getPreviousMonthKey(target.monthKey);
+                  return { ...r, endMonthKey: prevMonth };
+                }
+                return r;
+              })
+            );
+            // Delete target and all future instances of this recurring group
+            return prev.filter(
+              (t) =>
+                !(
+                  t.recurringGroupId === target.recurringGroupId &&
+                  t.monthKey >= target.monthKey
+                )
+            );
+          } else {
+            // 'single': Only exclude this specific month, subsequent months continue
+            setRecurringRules((rules) =>
+              rules.map((r) => {
+                if (r.id === target.recurringGroupId) {
+                  const excluded = r.excludedMonthKeys || [];
+                  if (!excluded.includes(target.monthKey)) {
+                    return { ...r, excludedMonthKeys: [...excluded, target.monthKey] };
+                  }
+                }
+                return r;
+              })
+            );
+            // Delete only this month's transaction
+            return prev.filter((t) => t.id !== transactionId);
+          }
+        }
+
+        // 3. Regular transaction deletion
         return prev.filter((t) => t.id !== transactionId);
       });
     },
@@ -383,10 +591,12 @@ export function useFinanceStorage() {
     localStorage.removeItem(STORAGE_KEYS.BUDGETS);
     localStorage.removeItem(STORAGE_KEYS.DEFAULT_BUDGET);
     localStorage.removeItem(STORAGE_KEYS.USER_PROFILE);
+    localStorage.removeItem(STORAGE_KEYS.RECURRING_RULES);
 
     setIncomeCategories(INITIAL_INCOME_CATEGORIES);
     setExpenseCategories(INITIAL_EXPENSE_CATEGORIES);
     setTransactions(getInitialTransactions());
+    setRecurringRules(getInitialRecurringRules());
     setBudgets({ [getCurrentMonthKey()]: DEFAULT_MONTHLY_BUDGET });
     setDefaultBudget(DEFAULT_MONTHLY_BUDGET);
     setUserProfile(DEFAULT_USER_PROFILE);
@@ -403,6 +613,9 @@ export function useFinanceStorage() {
     }
     if (backup.transactions && Array.isArray(backup.transactions)) {
       setTransactions(backup.transactions);
+    }
+    if (backup.recurringRules && Array.isArray(backup.recurringRules)) {
+      setRecurringRules(backup.recurringRules);
     }
     if (backup.budgets && typeof backup.budgets === 'object') {
       setBudgets(backup.budgets);
@@ -432,6 +645,7 @@ export function useFinanceStorage() {
     defaultBudget,
     categoryBudgets,
     userProfile,
+    recurringRules,
     updateUserProfile,
     setMonthBudget,
     setCategoryBudget,
@@ -439,6 +653,7 @@ export function useFinanceStorage() {
     addCategory,
     deleteCategory,
     addTransaction,
+    updateTransaction,
     deleteTransaction,
     resetToInitialData,
     restoreFromBackup,

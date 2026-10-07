@@ -2,12 +2,14 @@ import React, { useState } from 'react';
 import { PieChart as PieIcon, BarChart3, TrendingUp, TrendingDown, Layers } from 'lucide-react';
 import { Transaction, Category, MonthSummary } from '../types/finance';
 import { formatCurrency, formatPercent } from '../utils/formatters';
+import { useCurrencyVisibility } from '../context/CurrencyVisibilityContext';
 import { CategoryIcon } from './CategoryIcon';
 
 interface ChartsViewProps {
   transactions: Transaction[];
   categories: Category[];
   summary: MonthSummary;
+  compact?: boolean;
 }
 
 interface CategorySlice {
@@ -26,6 +28,7 @@ export const ChartsView: React.FC<ChartsViewProps> = ({
   categories,
   summary,
 }) => {
+  const { formatMoney } = useCurrencyVisibility();
   const [activeCategoryIndex, setActiveCategoryIndex] = useState<number | null>(null);
 
   // Filter only expenses for the donut chart
@@ -196,7 +199,7 @@ export const ChartsView: React.FC<ChartsViewProps> = ({
                       {currentHoveredSlice.categoryName}
                     </span>
                     <span className="text-xs font-bold text-slate-800 tabular-nums">
-                      {formatCurrency(currentHoveredSlice.total)}
+                      {formatMoney(currentHoveredSlice.total)}
                     </span>
                     <span className="text-[10px] font-semibold text-teal-600">
                       {formatPercent(currentHoveredSlice.percentage)}
@@ -208,7 +211,7 @@ export const ChartsView: React.FC<ChartsViewProps> = ({
                       Gasto Total
                     </span>
                     <span className="text-xs font-bold text-slate-800 tabular-nums">
-                      {formatCurrency(totalExpenses)}
+                      {formatMoney(totalExpenses)}
                     </span>
                     <span className="text-[9px] text-slate-400">
                       {slices.length} {slices.length === 1 ? 'categoria' : 'categorias'}
@@ -250,7 +253,7 @@ export const ChartsView: React.FC<ChartsViewProps> = ({
 
                     <div className="flex items-center gap-3 shrink-0 ml-2">
                       <span className="text-xs font-semibold text-slate-800 tabular-nums">
-                        {formatCurrency(slice.total)}
+                        {formatMoney(slice.total)}
                       </span>
                       <span className="text-[11px] font-medium text-slate-400 tabular-nums w-11 text-right">
                         {formatPercent(slice.percentage)}
@@ -312,7 +315,7 @@ export const ChartsView: React.FC<ChartsViewProps> = ({
                 Total Receitas (Renda)
               </span>
               <span className="font-bold text-slate-900 tabular-nums">
-                {formatCurrency(totalIncome)}
+                {formatMoney(totalIncome)}
               </span>
             </div>
             <div className="w-full h-3 bg-slate-100 rounded-full overflow-hidden">
@@ -331,7 +334,7 @@ export const ChartsView: React.FC<ChartsViewProps> = ({
                 Gasto Total Geral
               </span>
               <span className="font-bold text-slate-900 tabular-nums">
-                {formatCurrency(totalExpenses)}
+                {formatMoney(totalExpenses)}
               </span>
             </div>
             <div className="w-full h-3 bg-slate-100 rounded-full overflow-hidden">
@@ -352,7 +355,7 @@ export const ChartsView: React.FC<ChartsViewProps> = ({
             }`}
           >
             {isSurplus ? '+' : ''}
-            {formatCurrency(balanceDiff)}
+            {formatMoney(balanceDiff)}
           </span>
         </div>
       </div>
@@ -411,7 +414,7 @@ export const ChartsView: React.FC<ChartsViewProps> = ({
                   Fixos ({formatPercent(totalExpenses ? (totalFixed / totalExpenses) * 100 : 0)})
                 </span>
                 <span className="font-bold text-slate-800 tabular-nums text-xs">
-                  {formatCurrency(totalFixed)}
+                  {formatMoney(totalFixed)}
                 </span>
               </div>
 
@@ -420,7 +423,7 @@ export const ChartsView: React.FC<ChartsViewProps> = ({
                   Variáveis ({formatPercent(totalExpenses ? (totalVariable / totalExpenses) * 100 : 0)})
                 </span>
                 <span className="font-bold text-slate-800 tabular-nums text-xs">
-                  {formatCurrency(totalVariable)}
+                  {formatMoney(totalVariable)}
                 </span>
               </div>
 
@@ -429,7 +432,7 @@ export const ChartsView: React.FC<ChartsViewProps> = ({
                   Parcelados ({formatPercent(totalExpenses ? (totalInstallment / totalExpenses) * 100 : 0)})
                 </span>
                 <span className="font-bold text-slate-800 tabular-nums text-xs">
-                  {formatCurrency(totalInstallment)}
+                  {formatMoney(totalInstallment)}
                 </span>
               </div>
             </div>

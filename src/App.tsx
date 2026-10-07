@@ -15,6 +15,7 @@ import { getPinStatus } from './utils/pinSecurity';
 import { ActiveTab } from './types/finance';
 import { formatCurrency } from './utils/formatters';
 import { exportMonthToCSV } from './utils/csvExport';
+import { CurrencyVisibilityProvider } from './context/CurrencyVisibilityContext';
 import { Plus, ArrowRight, PieChart, Sparkles, UserCheck, FileSpreadsheet } from 'lucide-react';
 
 export default function App() {
@@ -39,6 +40,7 @@ export default function App() {
     addCategory,
     deleteCategory,
     addTransaction,
+    updateTransaction,
     deleteTransaction,
     resetToInitialData,
     restoreFromBackup,
@@ -69,7 +71,8 @@ export default function App() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-800 flex flex-col justify-between">
+    <CurrencyVisibilityProvider>
+      <div className="min-h-screen bg-slate-50 text-slate-800 flex flex-col justify-between">
       {/* Centered Mobile Container */}
       <div className="w-full max-w-md mx-auto bg-slate-50 flex-1 flex flex-col min-h-screen pb-24 shadow-xs sm:border-x sm:border-slate-200/60">
         {/* Fixed / Sticky Top Header with Month Navigation */}
@@ -148,6 +151,7 @@ export default function App() {
                   transactions={currentMonthTransactions.slice(0, 5)}
                   categories={allCategories}
                   onDeleteTransaction={deleteTransaction}
+                  onUpdateTransaction={updateTransaction}
                   onOpenAddModal={() => setIsAddModalOpen(true)}
                   onExportCSV={handleExportCSV}
                 />
@@ -190,6 +194,7 @@ export default function App() {
                 transactions={currentMonthTransactions}
                 categories={allCategories}
                 onDeleteTransaction={deleteTransaction}
+                onUpdateTransaction={updateTransaction}
                 onOpenAddModal={() => setIsAddModalOpen(true)}
                 onExportCSV={handleExportCSV}
               />
@@ -305,5 +310,6 @@ export default function App() {
         />
       )}
     </div>
+  </CurrencyVisibilityProvider>
   );
 }

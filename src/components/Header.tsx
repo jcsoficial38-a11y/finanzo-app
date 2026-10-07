@@ -1,8 +1,18 @@
 import React, { useState } from 'react';
-import { ChevronLeft, ChevronRight, Calendar, SlidersHorizontal, RotateCcw, User } from 'lucide-react';
+import {
+  ChevronLeft,
+  ChevronRight,
+  Calendar,
+  SlidersHorizontal,
+  RotateCcw,
+  User,
+  Eye,
+  EyeOff,
+} from 'lucide-react';
 import { formatMonthYearLabel, getCurrentMonthKey } from '../utils/dateUtils';
 import { MonthSelectorModal } from './MonthSelectorModal';
 import { UserProfile } from '../types/finance';
+import { useCurrencyVisibility } from '../context/CurrencyVisibilityContext';
 
 interface HeaderProps {
   currentMonthKey: string;
@@ -25,6 +35,7 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenProfileModal,
   onResetData,
 }) => {
+  const { hideValues, toggleHideValues } = useCurrencyVisibility();
   const [isMonthModalOpen, setIsMonthModalOpen] = useState(false);
   const [showConfirmReset, setShowConfirmReset] = useState(false);
 
@@ -64,6 +75,31 @@ export const Header: React.FC<HeaderProps> = ({
           </div>
 
           <div className="flex items-center gap-1.5">
+            {/* Toggle Hide/Show Values Button */}
+            <button
+              type="button"
+              onClick={toggleHideValues}
+              title={hideValues ? 'Exibir valores monetários' : 'Ocultar valores monetários (R$ •••••)'}
+              aria-label={hideValues ? 'Exibir valores monetários' : 'Ocultar valores monetários'}
+              className={`h-8 px-2.5 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-all active:scale-95 ${
+                hideValues
+                  ? 'bg-amber-100 text-amber-900 border border-amber-300 shadow-2xs'
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100 border border-slate-200/80 bg-white'
+              }`}
+            >
+              {hideValues ? (
+                <>
+                  <EyeOff className="w-3.5 h-3.5 text-amber-700 shrink-0" />
+                  <span className="hidden sm:inline">Oculto</span>
+                </>
+              ) : (
+                <>
+                  <Eye className="w-3.5 h-3.5 text-slate-500 shrink-0" />
+                  <span className="hidden sm:inline">Valores</span>
+                </>
+              )}
+            </button>
+
             <button
               onClick={onOpenBudgetModal}
               title="Definir Orçamento do Mês"

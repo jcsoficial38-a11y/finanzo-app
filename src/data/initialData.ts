@@ -1,4 +1,4 @@
-import { Category, Transaction } from '../types/finance';
+import { Category, Transaction, RecurringExpenseRule } from '../types/finance';
 import { getCurrentMonthKey, addMonthsToDate } from '../utils/dateUtils';
 
 export const PASTEL_COLORS = [
@@ -157,7 +157,7 @@ export function getInitialTransactions(): Transaction[] {
       createdAt: Date.now() - 300000,
     },
 
-    // Fixed Expenses
+    // Fixed Expenses (Recurring)
     {
       id: 'tx-seed-4',
       name: 'Aluguel do Apartamento',
@@ -167,6 +167,8 @@ export function getInitialTransactions(): Transaction[] {
       kind: 'expense',
       categoryId: 'exp-moradia',
       expenseType: 'fixed',
+      isRecurring: true,
+      recurringGroupId: 'rec-seed-aluguel',
       createdAt: Date.now() - 250000,
     },
     {
@@ -178,6 +180,8 @@ export function getInitialTransactions(): Transaction[] {
       kind: 'expense',
       categoryId: 'exp-contas',
       expenseType: 'fixed',
+      isRecurring: true,
+      recurringGroupId: 'rec-seed-internet',
       createdAt: Date.now() - 200000,
     },
     {
@@ -189,6 +193,8 @@ export function getInitialTransactions(): Transaction[] {
       kind: 'expense',
       categoryId: 'exp-saude',
       expenseType: 'fixed',
+      isRecurring: true,
+      recurringGroupId: 'rec-seed-saude',
       createdAt: Date.now() - 180000,
     },
 
@@ -275,4 +281,37 @@ export function getInitialTransactions(): Transaction[] {
   }
 
   return transactions;
+}
+
+export function getInitialRecurringRules(): RecurringExpenseRule[] {
+  const currentMonth = getCurrentMonthKey();
+  return [
+    {
+      id: 'rec-seed-aluguel',
+      name: 'Aluguel do Apartamento',
+      amount: 1450.0,
+      categoryId: 'exp-moradia',
+      dayOfMonth: 8,
+      startMonthKey: currentMonth,
+      createdAt: Date.now() - 250000,
+    },
+    {
+      id: 'rec-seed-internet',
+      name: 'Internet Fibra + Streaming',
+      amount: 189.9,
+      categoryId: 'exp-contas',
+      dayOfMonth: 10,
+      startMonthKey: currentMonth,
+      createdAt: Date.now() - 200000,
+    },
+    {
+      id: 'rec-seed-saude',
+      name: 'Plano de Saúde',
+      amount: 320.0,
+      categoryId: 'exp-saude',
+      dayOfMonth: 12,
+      startMonthKey: currentMonth,
+      createdAt: Date.now() - 180000,
+    },
+  ];
 }

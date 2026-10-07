@@ -13,6 +13,7 @@ import { formatCurrency, formatPercent } from '../utils/formatters';
 import { formatMonthYearLabel } from '../utils/dateUtils';
 import { Category, MonthSummary, Transaction } from '../types/finance';
 import { CategoryIcon } from './CategoryIcon';
+import { useCurrencyVisibility } from '../context/CurrencyVisibilityContext';
 
 interface BudgetModalProps {
   isOpen: boolean;
@@ -39,6 +40,7 @@ export const BudgetModal: React.FC<BudgetModalProps> = ({
   onSaveBudget,
   onSaveCategoryBudget,
 }) => {
+  const { formatMoney, hideValues } = useCurrencyVisibility();
   const [activeTab, setActiveTab] = useState<'general' | 'categories'>('general');
   const [amountStr, setAmountStr] = useState(() => currentBudget.toFixed(2));
   const [applyToAll, setApplyToAll] = useState(false);
@@ -243,7 +245,7 @@ export const BudgetModal: React.FC<BudgetModalProps> = ({
                         : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
                     }`}
                   >
-                    {formatCurrency(val)}
+                    {hideValues ? 'R$ •••••' : formatCurrency(val)}
                   </button>
                 ))}
               </div>
@@ -254,7 +256,7 @@ export const BudgetModal: React.FC<BudgetModalProps> = ({
               <div className="flex items-center justify-between font-medium">
                 <span className="text-slate-500">Gasto Total Atual:</span>
                 <span className="font-bold text-slate-800 tabular-nums">
-                  {formatCurrency(summary.totalExpenses)}
+                  {formatMoney(summary.totalExpenses)}
                 </span>
               </div>
 
@@ -265,7 +267,7 @@ export const BudgetModal: React.FC<BudgetModalProps> = ({
                     isSimulatedOverBudget ? 'text-rose-600' : 'text-teal-700'
                   }`}
                 >
-                  {formatCurrency(simulatedRemaining)}
+                  {formatMoney(simulatedRemaining)}
                 </span>
               </div>
 
@@ -289,7 +291,7 @@ export const BudgetModal: React.FC<BudgetModalProps> = ({
                 <span>{formatPercent(simulatedUsagePercent)} comprometido</span>
                 {simulatedRemaining > 0 && (
                   <span>
-                    ~{formatCurrency(dailyBudgetRemaining)}/dia nos {daysRemaining} dias restantes
+                    ~{formatMoney(dailyBudgetRemaining)}/dia nos {daysRemaining} dias restantes
                   </span>
                 )}
               </div>
@@ -365,7 +367,7 @@ export const BudgetModal: React.FC<BudgetModalProps> = ({
                             {cat.name}
                           </span>
                           <span className="text-[10px] text-slate-400">
-                            Gasto: {formatCurrency(spent)}
+                            Gasto: {formatMoney(spent)}
                           </span>
                         </div>
                       </div>
@@ -401,7 +403,7 @@ export const BudgetModal: React.FC<BudgetModalProps> = ({
                           className="text-right hover:opacity-80 transition-opacity"
                         >
                           <span className="text-xs font-bold text-slate-800 tabular-nums block">
-                            {limit > 0 ? formatCurrency(limit) : 'Definir Meta'}
+                            {limit > 0 ? formatMoney(limit) : 'Definir Meta'}
                           </span>
                           <span className="text-[10px] text-teal-600 font-medium">
                             {limit > 0 ? 'Editar' : '+ Definir'}
@@ -431,8 +433,8 @@ export const BudgetModal: React.FC<BudgetModalProps> = ({
                           <span>{formatPercent(usage)} da meta</span>
                           <span className={isOver ? 'text-rose-500 font-semibold' : ''}>
                             {isOver
-                              ? `Excedeu em ${formatCurrency(spent - limit)}`
-                              : `Resta ${formatCurrency(limit - spent)}`}
+                              ? `Excedeu em ${formatMoney(spent - limit)}`
+                              : `Resta ${formatMoney(limit - spent)}`}
                           </span>
                         </div>
                       </div>

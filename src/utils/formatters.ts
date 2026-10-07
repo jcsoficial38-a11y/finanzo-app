@@ -1,4 +1,5 @@
-export function formatCurrency(value: number): string {
+export function formatCurrency(value: number, hide = false): string {
+  if (hide) return 'R$ •••••';
   if (isNaN(value)) return 'R$ 0,00';
   return new Intl.NumberFormat('pt-BR', {
     style: 'currency',
@@ -8,7 +9,8 @@ export function formatCurrency(value: number): string {
   }).format(value);
 }
 
-export function formatCompactCurrency(value: number): string {
+export function formatCompactCurrency(value: number, hide = false): string {
+  if (hide) return 'R$ •••••';
   if (isNaN(value)) return 'R$ 0';
   if (Math.abs(value) >= 1_000_000) {
     return `R$ ${(value / 1_000_000).toFixed(1).replace('.', ',')}M`;

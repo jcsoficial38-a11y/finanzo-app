@@ -19,9 +19,24 @@ export interface Transaction {
   kind: CategoryType; // 'income' | 'expense'
   categoryId: string;
   expenseType?: ExpenseType; // Only for expenses
+  isRecurring?: boolean; // True if this is a recurring fixed expense
+  recurringGroupId?: string; // Group ID referencing RecurringExpenseRule
   installmentGroupId?: string;
   installmentIndex?: number; // 1-based
   installmentTotal?: number;
+  notes?: string;
+  createdAt: number;
+}
+
+export interface RecurringExpenseRule {
+  id: string; // Group ID
+  name: string;
+  amount: number;
+  categoryId: string;
+  dayOfMonth: number;
+  startMonthKey: string; // 'YYYY-MM'
+  endMonthKey?: string; // Optional 'YYYY-MM' when recurrence was stopped
+  excludedMonthKeys?: string[]; // Months where user deleted only that single occurrence
   notes?: string;
   createdAt: number;
 }

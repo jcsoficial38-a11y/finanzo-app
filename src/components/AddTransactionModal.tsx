@@ -10,6 +10,7 @@ import {
   CreditCard,
   Check,
   Sparkles,
+  Repeat,
 } from 'lucide-react';
 import { Category, CategoryType, ExpenseType } from '../types/finance';
 import { formatCurrency } from '../utils/formatters';
@@ -29,6 +30,7 @@ interface AddTransactionModalProps {
     kind: CategoryType;
     categoryId: string;
     expenseType?: ExpenseType;
+    isRecurring?: boolean;
     installmentsCount?: number;
     isTotalAmount?: boolean;
     notes?: string;
@@ -58,6 +60,7 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
   });
   const [selectedCategoryId, setSelectedCategoryId] = useState('');
   const [expenseType, setExpenseType] = useState<ExpenseType>('variable');
+  const [isRecurringFixed, setIsRecurringFixed] = useState<boolean>(true);
   const [installmentsCount, setInstallmentsCount] = useState<number | string>(3);
   const [isTotalAmount, setIsTotalAmount] = useState<boolean>(true);
 
@@ -116,6 +119,7 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
       kind,
       categoryId: selectedCategoryId,
       expenseType: kind === 'expense' ? expenseType : undefined,
+      isRecurring: kind === 'expense' && expenseType === 'fixed' ? isRecurringFixed : false,
       installmentsCount:
         kind === 'expense' && expenseType === 'installment' ? parsedInstallments : 1,
       isTotalAmount,
@@ -252,7 +256,10 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
               <div className="grid grid-cols-3 gap-1.5 p-1 bg-slate-100 rounded-2xl">
                 <button
                   type="button"
-                  onClick={() => setExpenseType('fixed')}
+                  onClick={() => {
+                    setExpenseType('fixed');
+                    setIsRecurringFixed(true);
+                  }}
                   className={`py-2 px-2 rounded-xl text-xs font-medium flex flex-col items-center gap-1 transition-all ${
                     expenseType === 'fixed'
                       ? 'bg-white text-sky-700 shadow-xs font-semibold'
@@ -260,7 +267,7 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                   }`}
                 >
                   <Layers className="w-3.5 h-3.5 text-sky-600" />
-                  <span>Fixo</span>
+                  <span>Despesa Fixa</span>
                 </button>
 
                 <button
@@ -289,6 +296,32 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                   <span>Parcelado</span>
                 </button>
               </div>
+
+              {/* Recurring Fixed Expense Box */}
+              {expenseType === 'fixed' && (
+                <div className="p-3 bg-sky-50/90 rounded-2xl border border-sky-200/80 space-y-1.5 animate-in fade-in duration-150">
+                  <label className="flex items-start gap-2.5 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={isRecurringFixed}
+                      onChange={(e) => setIsRecurringFixed(e.target.checked)}
+                      className="mt-0.5 w-4 h-4 rounded text-sky-600 focus:ring-sky-500 border-slate-300 accent-sky-600"
+                    />
+                    <div className="flex-1 text-xs">
+                      <div className="font-bold text-sky-950 flex items-center gap-1.5">
+                        <Repeat className="w-3.5 h-3.5 text-sky-600 shrink-0" />
+                        <span>Despesa Fixa Recorrente</span>
+                        <span className="text-[10px] bg-sky-200/70 text-sky-800 px-1.5 py-0.2 rounded font-semibold">
+                          Automático
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-sky-800/90 mt-1 leading-relaxed">
+                        Esta despesa se repetirá automaticamente nos meses seguintes na visualização do aplicativo até que seja excluída. Você também poderá editar o valor ou excluir a despesa de forma independente em cada mês.
+                      </p>
+                    </div>
+                  </label>
+                </div>
+              )}
 
               {/* Installment Options Box */}
               {expenseType === 'installment' && (
