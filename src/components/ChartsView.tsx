@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { PieChart as PieIcon, BarChart3, TrendingUp, TrendingDown, Layers } from 'lucide-react';
 import { Transaction, Category, MonthSummary } from '../types/finance';
 import { formatCurrency, formatPercent } from '../utils/formatters';
@@ -31,45 +31,46 @@ export const ChartsView: React.FC<ChartsViewProps> = ({
   const { formatMoney } = useCurrencyVisibility();
   const [activeCategoryIndex, setActiveCategoryIndex] = useState<number | null>(null);
 
-  // Filter only expenses for the donut chart
-  const expenseTransactions = transactions.filter((t) => t.kind === 'expense');
+  // Group expenses by category memoized for instant 60fps rendering
+  const { slices, totalExpenses } = useMemo(() => {
+    const expenseTransactions = transactions.filter((t) => t.kind === 'expense');
+    const categoryTotalsMap = new Map<string, number>();
+    let total = 0;
 
-  // Group expenses by category
-  const categoryTotalsMap = new Map<string, number>();
-  let totalExpenses = 0;
+    for (const t of expenseTransactions) {
+      const current = categoryTotalsMap.get(t.categoryId) || 0;
+      categoryTotalsMap.set(t.categoryId, current + t.amount);
+      total += t.amount;
+    }
 
-  for (const t of expenseTransactions) {
-    const current = categoryTotalsMap.get(t.categoryId) || 0;
-    categoryTotalsMap.set(t.categoryId, current + t.amount);
-    totalExpenses += t.amount;
-  }
+    const builtSlices: CategorySlice[] = [];
+    let accumulatedAngle = 0;
 
-  // Build slices sorted by total desc
-  const slices: CategorySlice[] = [];
-  let accumulatedAngle = 0;
+    const sortedCategoryIds = Array.from(categoryTotalsMap.entries()).sort(
+      (a, b) => b[1] - a[1]
+    );
 
-  const sortedCategoryIds = Array.from(categoryTotalsMap.entries()).sort(
-    (a, b) => b[1] - a[1]
-  );
+    for (const [catId, amount] of sortedCategoryIds) {
+      const cat = categories.find((c) => c.id === catId);
+      const percentage = total > 0 ? (amount / total) * 100 : 0;
+      const sliceAngle = total > 0 ? (amount / total) * 360 : 0;
 
-  for (const [catId, amount] of sortedCategoryIds) {
-    const cat = categories.find((c) => c.id === catId);
-    const percentage = totalExpenses > 0 ? (amount / totalExpenses) * 100 : 0;
-    const sliceAngle = totalExpenses > 0 ? (amount / totalExpenses) * 360 : 0;
+      builtSlices.push({
+        categoryId: catId,
+        categoryName: cat?.name || 'Outros',
+        color: cat?.color || '#cbd5e1',
+        iconName: cat?.iconName || 'Tag',
+        total: amount,
+        percentage,
+        startAngle: accumulatedAngle,
+        endAngle: accumulatedAngle + sliceAngle,
+      });
 
-    slices.push({
-      categoryId: catId,
-      categoryName: cat?.name || 'Outros',
-      color: cat?.color || '#cbd5e1',
-      iconName: cat?.iconName || 'Tag',
-      total: amount,
-      percentage,
-      startAngle: accumulatedAngle,
-      endAngle: accumulatedAngle + sliceAngle,
-    });
+      accumulatedAngle += sliceAngle;
+    }
 
-    accumulatedAngle += sliceAngle;
-  }
+    return { slices: builtSlices, totalExpenses: total };
+  }, [transactions, categories]);
 
   // Helpers for SVG Arc drawing
   const getCoordinatesForPercent = (angleInDegrees: number, radius: number, cx: number, cy: number) => {
