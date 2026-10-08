@@ -20,10 +20,13 @@ import {
   Eye,
   EyeOff,
   FolderArchive,
+  Palette,
 } from 'lucide-react';
 import { UserProfile } from '../types/finance';
 import { PASTEL_COLORS } from '../data/initialData';
 import { WhatsAppIcon } from './WhatsAppIcon';
+import { useAppTheme } from '../context/ThemeContext';
+import { APP_THEMES, ThemeId } from '../utils/themeConfig';
 import {
   getPinStatus,
   savePin,
@@ -59,6 +62,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
   const [avatarUrl, setAvatarUrl] = useState(profile.avatarUrl || '');
   const [avatarColor, setAvatarColor] = useState(profile.avatarColor || '#7dd3fc');
   const [savedSuccess, setSavedSuccess] = useState(false);
+  const { themeId, setTheme } = useAppTheme();
 
   // 4-Digit PIN Security State
   const [pinStatus, setPinStatus] = useState<PinStatus>(() => getPinStatus());
@@ -365,6 +369,66 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
               placeholder="Ex: Focado em economizar e investir"
               className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium text-slate-800 focus:outline-hidden focus:border-teal-500 focus:bg-white transition-all"
             />
+          </div>
+
+          {/* Section: Personalização de Tema e Cores */}
+          <div className="p-3.5 bg-slate-50 rounded-2xl border border-slate-200/80 space-y-3">
+            <div className="flex items-center gap-2">
+              <div className="w-7 h-7 rounded-xl bg-slate-900 text-white flex items-center justify-center shadow-2xs">
+                <Palette className="w-4 h-4 text-white" />
+              </div>
+              <div>
+                <h4 className="text-xs font-bold text-slate-800">
+                  Tema & Cores do Aplicativo
+                </h4>
+                <p className="text-[11px] text-slate-500">
+                  Alterne entre Azul, Verde, Preto, Amarelo com Preto, etc.
+                </p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-2 pt-1">
+              {(Object.values(APP_THEMES) as Array<(typeof APP_THEMES)[ThemeId]>).map((th) => {
+                const isSelected = themeId === th.id;
+                return (
+                  <button
+                    key={th.id}
+                    type="button"
+                    onClick={() => setTheme(th.id)}
+                    className={`p-2.5 rounded-2xl border text-left transition-all relative flex flex-col justify-between gap-2 cursor-pointer ${
+                      isSelected
+                        ? 'bg-white border-slate-900 ring-2 ring-slate-900/15 shadow-xs'
+                        : 'bg-white/80 hover:bg-white border-slate-200 hover:border-slate-300'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-1">
+                        {th.swatchPreview.map((hex, idx) => (
+                          <span
+                            key={idx}
+                            className="w-3.5 h-3.5 rounded-full border border-black/10 inline-block shadow-2xs"
+                            style={{ backgroundColor: hex }}
+                          />
+                        ))}
+                      </div>
+                      {isSelected && (
+                        <span className="w-4 h-4 rounded-full bg-slate-900 text-white flex items-center justify-center text-[10px]">
+                          <Check className="w-2.5 h-2.5" />
+                        </span>
+                      )}
+                    </div>
+                    <div>
+                      <span className="block text-xs font-bold text-slate-800 leading-tight">
+                        {th.name}
+                      </span>
+                      <span className="block text-[10px] text-slate-400 leading-tight mt-0.5">
+                        {th.subtitle}
+                      </span>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
           </div>
 
           {/* Section: Senha de 4 Dígitos (Bloqueio de Segurança) */}

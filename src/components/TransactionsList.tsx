@@ -81,6 +81,14 @@ export const TransactionsList: React.FC<TransactionsListProps> = ({
     return new Map(categories.map((c) => [c.id, c]));
   }, [categories]);
 
+  const categoryCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const t of transactions) {
+      counts.set(t.categoryId, (counts.get(t.categoryId) || 0) + 1);
+    }
+    return counts;
+  }, [transactions]);
+
   // Open edit modal with pre-filled fields
   const handleOpenEdit = (tx: Transaction) => {
     setEditTarget(tx);
@@ -278,24 +286,30 @@ export const TransactionsList: React.FC<TransactionsListProps> = ({
               onChange={(e) => setSelectedCategoryFilter(e.target.value)}
               className="flex-1 min-w-0 py-1.5 px-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 focus:outline-hidden focus:border-teal-500 focus:bg-white truncate transition-all cursor-pointer"
             >
-              <option value="all">Todas as Categorias ({categories.length})</option>
+              <option value="all">Todas as Categorias ({transactions.length})</option>
               <optgroup label="Despesas">
                 {categories
                   .filter((c) => c.type === 'expense')
-                  .map((cat) => (
-                    <option key={cat.id} value={cat.id}>
-                      {cat.name}
-                    </option>
-                  ))}
+                  .map((cat) => {
+                    const count = categoryCounts.get(cat.id) || 0;
+                    return (
+                      <option key={cat.id} value={cat.id}>
+                        {cat.name} ({count})
+                      </option>
+                    );
+                  })}
               </optgroup>
               <optgroup label="Receitas">
                 {categories
                   .filter((c) => c.type === 'income')
-                  .map((cat) => (
-                    <option key={cat.id} value={cat.id}>
-                      {cat.name}
-                    </option>
-                  ))}
+                  .map((cat) => {
+                    const count = categoryCounts.get(cat.id) || 0;
+                    return (
+                      <option key={cat.id} value={cat.id}>
+                        {cat.name} ({count})
+                      </option>
+                    );
+                  })}
               </optgroup>
             </select>
           </div>
@@ -303,7 +317,7 @@ export const TransactionsList: React.FC<TransactionsListProps> = ({
           {selectedCategoryFilter !== 'all' && (
             <button
               onClick={() => setSelectedCategoryFilter('all')}
-              className="px-2 py-1 text-[11px] font-semibold text-rose-600 hover:bg-rose-50 rounded-lg transition-colors shrink-0 flex items-center gap-0.5"
+              className="px-2 py-1 text-[11px] font-semibold text-rose-600 hover:bg-rose-50 rounded-lg transition-colors shrink-0 flex items-center gap-0.5 cursor-pointer"
             >
               <X className="w-3 h-3" />
               <span>Limpar</span>
@@ -322,11 +336,11 @@ export const TransactionsList: React.FC<TransactionsListProps> = ({
 
           <div className="flex items-center gap-1">
             <span className="text-[10px] text-slate-400 hidden xs:inline">Por pág:</span>
-            {([10, 20, 'all'] as const).map((size) => (
+            {([10, 20, 50, 'all'] as const).map((size) => (
               <button
                 key={String(size)}
                 onClick={() => setPageSize(size)}
-                className={`px-2 py-0.5 rounded-lg text-[11px] font-semibold transition-colors ${
+                className={`px-2 py-0.5 rounded-lg text-[11px] font-semibold transition-colors cursor-pointer ${
                   pageSize === size
                     ? 'bg-slate-800 text-white shadow-2xs'
                     : 'bg-slate-100 text-slate-600 hover:bg-slate-200'

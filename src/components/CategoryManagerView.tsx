@@ -8,6 +8,9 @@ import {
   Check,
   AlertCircle,
   FolderPlus,
+  Pencil,
+  X,
+  Sparkles,
 } from 'lucide-react';
 import { Category, CategoryType, Transaction } from '../types/finance';
 import { PASTEL_COLORS, AVAILABLE_ICONS } from '../data/initialData';
@@ -18,6 +21,7 @@ interface CategoryManagerViewProps {
   expenseCategories: Category[];
   transactions: Transaction[];
   onAddCategory: (category: Omit<Category, 'id'>) => void;
+  onUpdateCategory?: (id: string, updates: Partial<Category>) => void;
   onDeleteCategory: (id: string, type: CategoryType) => void;
 }
 
@@ -26,6 +30,7 @@ export const CategoryManagerView: React.FC<CategoryManagerViewProps> = ({
   expenseCategories,
   transactions,
   onAddCategory,
+  onUpdateCategory,
   onDeleteCategory,
 }) => {
   const [activeTab, setActiveTab] = useState<CategoryType>('expense');
@@ -36,6 +41,13 @@ export const CategoryManagerView: React.FC<CategoryManagerViewProps> = ({
   const [selectedColor, setSelectedColor] = useState(PASTEL_COLORS[0].hex);
   const [selectedIcon, setSelectedIcon] = useState(AVAILABLE_ICONS[0]);
 
+  // Edit Category state
+  const [editingCat, setEditingCat] = useState<Category | null>(null);
+  const [editName, setEditName] = useState('');
+  const [editColor, setEditColor] = useState('');
+  const [editIcon, setEditIcon] = useState('');
+  const [statusMessage, setStatusMessage] = useState<string | null>(null);
+
   // Delete confirmation
   const [catToDelete, setCatToDelete] = useState<Category | null>(null);
 
@@ -43,6 +55,31 @@ export const CategoryManagerView: React.FC<CategoryManagerViewProps> = ({
 
   const getUsageCount = (catId: string) => {
     return transactions.filter((t) => t.categoryId === catId).length;
+  };
+
+  const handleStartEdit = (cat: Category) => {
+    setEditingCat(cat);
+    setEditName(cat.name);
+    setEditColor(cat.color || PASTEL_COLORS[0].hex);
+    setEditIcon(cat.iconName || AVAILABLE_ICONS[0]);
+    setIsAddingNew(false);
+  };
+
+  const handleSaveEdit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingCat || !editName.trim()) return;
+
+    if (onUpdateCategory) {
+      onUpdateCategory(editingCat.id, {
+        name: editName.trim(),
+        color: editColor,
+        iconName: editIcon,
+      });
+      setStatusMessage(`Categoria "${editName.trim()}" atualizada com sucesso!`);
+      setTimeout(() => setStatusMessage(null), 3000);
+    }
+
+    setEditingCat(null);
   };
 
   const handleCreateCategory = (e: React.FormEvent) => {
@@ -56,6 +93,9 @@ export const CategoryManagerView: React.FC<CategoryManagerViewProps> = ({
       iconName: selectedIcon,
     });
 
+    setStatusMessage(`Nova categoria "${newCatName.trim()}" cadastrada!`);
+    setTimeout(() => setStatusMessage(null), 3000);
+
     setNewCatName('');
     setIsAddingNew(false);
   };
@@ -63,20 +103,31 @@ export const CategoryManagerView: React.FC<CategoryManagerViewProps> = ({
   const confirmDeleteCategory = () => {
     if (catToDelete) {
       onDeleteCategory(catToDelete.id, catToDelete.type);
+      setStatusMessage(`Categoria "${catToDelete.name}" excluída.`);
+      setTimeout(() => setStatusMessage(null), 3000);
       setCatToDelete(null);
     }
   };
 
   return (
     <div className="space-y-3">
+      {/* Status banner */}
+      {statusMessage && (
+        <div className="p-3 bg-teal-50 border border-teal-200 text-teal-800 rounded-2xl text-xs font-semibold flex items-center gap-2 animate-in fade-in duration-150">
+          <Check className="w-4 h-4 text-teal-600 shrink-0" />
+          <span>{statusMessage}</span>
+        </div>
+      )}
+
       {/* Kind Tab Switcher */}
       <div className="grid grid-cols-2 p-1 bg-slate-100 rounded-2xl gap-1">
         <button
           onClick={() => {
             setActiveTab('income');
             setIsAddingNew(false);
+            setEditingCat(null);
           }}
-          className={`py-2 px-3 rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 transition-all ${
+          className={`py-2 px-3 rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
             activeTab === 'income'
               ? 'bg-white text-emerald-700 shadow-xs'
               : 'text-slate-600 hover:text-slate-900'
@@ -89,8 +140,9 @@ export const CategoryManagerView: React.FC<CategoryManagerViewProps> = ({
           onClick={() => {
             setActiveTab('expense');
             setIsAddingNew(false);
+            setEditingCat(null);
           }}
-          className={`py-2 px-3 rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 transition-all ${
+          className={`py-2 px-3 rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
             activeTab === 'expense'
               ? 'bg-white text-rose-700 shadow-xs'
               : 'text-slate-600 hover:text-slate-900'
@@ -100,6 +152,127 @@ export const CategoryManagerView: React.FC<CategoryManagerViewProps> = ({
           <span>Despesa ({expenseCategories.length})</span>
         </button>
       </div>
+
+      {/* EDIT MODAL / FORM */}
+      {editingCat && (
+        <form
+          onSubmit={handleSaveEdit}
+          className="p-4 bg-white border-2 border-teal-500/30 rounded-3xl shadow-sm space-y-3.5 animate-in fade-in duration-150"
+        >
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <span
+                className="w-8 h-8 rounded-xl flex items-center justify-center shrink-0 shadow-2xs"
+                style={{ backgroundColor: `${editColor}55` }}
+              >
+                <CategoryIcon name={editIcon} className="w-4 h-4 text-slate-800" />
+              </span>
+              <div>
+                <h4 className="text-xs font-bold text-slate-800">
+                  Editar Categoria: {editingCat.name}
+                </h4>
+                <p className="text-[10px] text-slate-400">
+                  Altere o nome, a cor ou o ícone representativo
+                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => setEditingCat(null)}
+              className="text-slate-400 hover:text-slate-600 p-1 rounded-lg"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+
+          <div>
+            <label className="block text-[11px] font-semibold text-slate-600 mb-1">
+              Nome da Categoria
+            </label>
+            <input
+              type="text"
+              value={editName}
+              onChange={(e) => setEditName(e.target.value)}
+              placeholder="Nome da categoria"
+              required
+              autoFocus
+              className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-800 focus:outline-hidden focus:border-teal-500 focus:bg-white"
+            />
+          </div>
+
+          {/* Color Picker */}
+          <div>
+            <label className="block text-[11px] font-semibold text-slate-600 mb-1.5">
+              Cor do Ícone
+            </label>
+            <div className="flex flex-wrap gap-2">
+              {PASTEL_COLORS.map((c) => (
+                <button
+                  key={c.hex}
+                  type="button"
+                  onClick={() => setEditColor(c.hex)}
+                  className={`w-7 h-7 rounded-full flex items-center justify-center transition-transform cursor-pointer ${
+                    editColor === c.hex
+                      ? 'scale-110 ring-2 ring-slate-800 shadow-xs'
+                      : 'hover:scale-105'
+                  }`}
+                  style={{ backgroundColor: c.hex }}
+                  title={c.name}
+                >
+                  {editColor === c.hex && (
+                    <Check className="w-3.5 h-3.5 text-slate-800" />
+                  )}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Icon Picker */}
+          <div>
+            <label className="block text-[11px] font-semibold text-slate-600 mb-1.5">
+              Escolher Ícone
+            </label>
+            <div className="grid grid-cols-6 sm:grid-cols-8 gap-1.5 max-h-36 overflow-y-auto p-1.5 bg-slate-50 rounded-xl border border-slate-200">
+              {AVAILABLE_ICONS.map((iconName) => {
+                const isSelected = editIcon === iconName;
+                return (
+                  <button
+                    key={iconName}
+                    type="button"
+                    onClick={() => setEditIcon(iconName)}
+                    className={`w-8 h-8 rounded-lg flex items-center justify-center transition-colors cursor-pointer ${
+                      isSelected
+                        ? 'bg-slate-800 text-white shadow-xs'
+                        : 'hover:bg-white text-slate-600'
+                    }`}
+                    title={iconName}
+                  >
+                    <CategoryIcon name={iconName} className="w-4 h-4" />
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          <div className="flex gap-2 pt-1">
+            <button
+              type="button"
+              onClick={() => setEditingCat(null)}
+              className="flex-1 py-2.5 text-xs font-semibold text-slate-600 bg-slate-100 rounded-xl hover:bg-slate-200 transition-colors cursor-pointer"
+            >
+              Cancelar
+            </button>
+            <button
+              type="submit"
+              disabled={!editName.trim()}
+              className="flex-1 py-2.5 text-xs font-semibold text-white bg-teal-600 hover:bg-teal-700 disabled:opacity-50 flex items-center justify-center gap-1.5 rounded-xl transition-colors shadow-xs cursor-pointer"
+            >
+              <Check className="w-4 h-4" />
+              Salvar Alterações
+            </button>
+          </div>
+        </form>
+      )}
 
       {/* New Category Collapsible Form or Add Button */}
       {isAddingNew ? (
@@ -114,14 +287,14 @@ export const CategoryManagerView: React.FC<CategoryManagerViewProps> = ({
             <button
               type="button"
               onClick={() => setIsAddingNew(false)}
-              className="text-slate-400 hover:text-slate-600 text-xs font-medium"
+              className="text-slate-400 hover:text-slate-600 text-xs font-medium cursor-pointer"
             >
               Cancelar
             </button>
           </div>
 
           <div>
-            <label className="block text-[11px] font-medium text-slate-600 mb-1">
+            <label className="block text-[11px] font-semibold text-slate-600 mb-1">
               Nome da Categoria
             </label>
             <input
@@ -131,7 +304,7 @@ export const CategoryManagerView: React.FC<CategoryManagerViewProps> = ({
               placeholder={
                 activeTab === 'income'
                   ? 'Ex: Dividendos, Vendas, Bônus'
-                  : 'Ex: Delivery, Farmácia, Pets'
+                  : 'Ex: Sanduíche, Sorvete, Estudo'
               }
               required
               autoFocus
@@ -141,8 +314,8 @@ export const CategoryManagerView: React.FC<CategoryManagerViewProps> = ({
 
           {/* Pastel Color Picker */}
           <div>
-            <label className="block text-[11px] font-medium text-slate-600 mb-1.5">
-              Cor Pastel
+            <label className="block text-[11px] font-semibold text-slate-600 mb-1.5">
+              Cor do Ícone
             </label>
             <div className="flex flex-wrap gap-2">
               {PASTEL_COLORS.map((c) => (
@@ -150,7 +323,7 @@ export const CategoryManagerView: React.FC<CategoryManagerViewProps> = ({
                   key={c.hex}
                   type="button"
                   onClick={() => setSelectedColor(c.hex)}
-                  className={`w-7 h-7 rounded-full flex items-center justify-center transition-transform ${
+                  className={`w-7 h-7 rounded-full flex items-center justify-center transition-transform cursor-pointer ${
                     selectedColor === c.hex
                       ? 'scale-110 ring-2 ring-slate-800 shadow-xs'
                       : 'hover:scale-105'
@@ -168,10 +341,10 @@ export const CategoryManagerView: React.FC<CategoryManagerViewProps> = ({
 
           {/* Icon Picker */}
           <div>
-            <label className="block text-[11px] font-medium text-slate-600 mb-1.5">
+            <label className="block text-[11px] font-semibold text-slate-600 mb-1.5">
               Ícone da Categoria
             </label>
-            <div className="grid grid-cols-6 sm:grid-cols-7 gap-1.5 max-h-32 overflow-y-auto p-1 bg-slate-50 rounded-xl border border-slate-200">
+            <div className="grid grid-cols-6 sm:grid-cols-8 gap-1.5 max-h-36 overflow-y-auto p-1.5 bg-slate-50 rounded-xl border border-slate-200">
               {AVAILABLE_ICONS.map((iconName) => {
                 const isSelected = selectedIcon === iconName;
                 return (
@@ -179,11 +352,12 @@ export const CategoryManagerView: React.FC<CategoryManagerViewProps> = ({
                     key={iconName}
                     type="button"
                     onClick={() => setSelectedIcon(iconName)}
-                    className={`w-8 h-8 rounded-lg flex items-center justify-center transition-colors ${
+                    className={`w-8 h-8 rounded-lg flex items-center justify-center transition-colors cursor-pointer ${
                       isSelected
-                        ? 'bg-slate-800 text-white'
+                        ? 'bg-slate-800 text-white shadow-xs'
                         : 'hover:bg-white text-slate-600'
                     }`}
+                    title={iconName}
                   >
                     <CategoryIcon name={iconName} className="w-4 h-4" />
                   </button>
@@ -196,14 +370,14 @@ export const CategoryManagerView: React.FC<CategoryManagerViewProps> = ({
             <button
               type="button"
               onClick={() => setIsAddingNew(false)}
-              className="flex-1 py-2.5 text-xs font-semibold text-slate-600 bg-slate-100 rounded-xl hover:bg-slate-200 transition-colors"
+              className="flex-1 py-2.5 text-xs font-semibold text-slate-600 bg-slate-100 rounded-xl hover:bg-slate-200 transition-colors cursor-pointer"
             >
               Cancelar
             </button>
             <button
               type="submit"
               disabled={!newCatName.trim()}
-              className="flex-1 py-2.5 text-xs font-semibold text-white bg-slate-900 rounded-xl hover:bg-slate-800 disabled:opacity-50 flex items-center justify-center gap-1.5 transition-colors shadow-xs"
+              className="flex-1 py-2.5 text-xs font-semibold text-white bg-slate-900 rounded-xl hover:bg-slate-800 disabled:opacity-50 flex items-center justify-center gap-1.5 transition-colors shadow-xs cursor-pointer"
             >
               <Plus className="w-4 h-4" />
               Salvar Categoria
@@ -211,13 +385,15 @@ export const CategoryManagerView: React.FC<CategoryManagerViewProps> = ({
           </div>
         </form>
       ) : (
-        <button
-          onClick={() => setIsAddingNew(true)}
-          className="w-full py-3.5 border-2 border-dashed border-slate-200 hover:border-slate-300 rounded-2xl text-xs font-semibold text-slate-600 hover:text-slate-800 flex items-center justify-center gap-1.5 bg-white transition-colors"
-        >
-          <FolderPlus className="w-4 h-4 text-teal-600" />
-          <span>Cadastrar Categoria de {activeTab === 'income' ? 'Renda' : 'Despesa'}</span>
-        </button>
+        !editingCat && (
+          <button
+            onClick={() => setIsAddingNew(true)}
+            className="w-full py-3.5 border-2 border-dashed border-slate-200 hover:border-slate-300 rounded-2xl text-xs font-semibold text-slate-600 hover:text-slate-800 flex items-center justify-center gap-1.5 bg-white transition-colors cursor-pointer"
+          >
+            <FolderPlus className="w-4 h-4 text-teal-600" />
+            <span>Cadastrar Nova Categoria de {activeTab === 'income' ? 'Renda' : 'Despesa'}</span>
+          </button>
+        )
       )}
 
       {/* List of existing categories */}
@@ -237,10 +413,14 @@ export const CategoryManagerView: React.FC<CategoryManagerViewProps> = ({
           <div className="bg-white rounded-3xl border border-slate-200/70 shadow-xs divide-y divide-slate-100 overflow-hidden">
             {currentCategories.map((cat) => {
               const count = getUsageCount(cat.id);
+              const isBeingEdited = editingCat?.id === cat.id;
+
               return (
                 <div
                   key={cat.id}
-                  className="flex items-center justify-between p-3.5 hover:bg-slate-50/70 transition-colors"
+                  className={`flex items-center justify-between p-3.5 transition-colors ${
+                    isBeingEdited ? 'bg-teal-50/60' : 'hover:bg-slate-50/70'
+                  }`}
                 >
                   <div className="flex items-center gap-3 min-w-0">
                     <span
@@ -264,14 +444,26 @@ export const CategoryManagerView: React.FC<CategoryManagerViewProps> = ({
                     </div>
                   </div>
 
-                  <button
-                    onClick={() => setCatToDelete(cat)}
-                    className="w-8 h-8 rounded-xl flex items-center justify-center text-slate-300 hover:text-rose-600 hover:bg-rose-50 transition-colors"
-                    title={`Excluir categoria ${cat.name}`}
-                    aria-label={`Excluir ${cat.name}`}
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
+                  <div className="flex items-center gap-1 shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => handleStartEdit(cat)}
+                      className="w-8 h-8 rounded-xl flex items-center justify-center text-slate-400 hover:text-teal-700 hover:bg-teal-50 transition-colors cursor-pointer"
+                      title={`Editar categoria ${cat.name}`}
+                      aria-label={`Editar ${cat.name}`}
+                    >
+                      <Pencil className="w-3.5 h-3.5" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setCatToDelete(cat)}
+                      className="w-8 h-8 rounded-xl flex items-center justify-center text-slate-300 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer"
+                      title={`Excluir categoria ${cat.name}`}
+                      aria-label={`Excluir ${cat.name}`}
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
                 </div>
               );
             })}
@@ -309,14 +501,14 @@ export const CategoryManagerView: React.FC<CategoryManagerViewProps> = ({
               <button
                 type="button"
                 onClick={() => setCatToDelete(null)}
-                className="flex-1 py-2 text-xs font-semibold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-xl"
+                className="flex-1 py-2 text-xs font-semibold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-xl cursor-pointer"
               >
                 Cancelar
               </button>
               <button
                 type="button"
                 onClick={confirmDeleteCategory}
-                className="flex-1 py-2 text-xs font-semibold text-white bg-rose-600 hover:bg-rose-700 rounded-xl"
+                className="flex-1 py-2 text-xs font-semibold text-white bg-rose-600 hover:bg-rose-700 rounded-xl cursor-pointer"
               >
                 Excluir
               </button>

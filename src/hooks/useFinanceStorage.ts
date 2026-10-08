@@ -43,6 +43,17 @@ const DEFAULT_USER_PROFILE: UserProfile = {
   joinedDate: 'Setembro 2026',
 };
 
+const LEGACY_CAT_MAPPING: Record<string, string> = {
+  'exp-transporte': 'exp-carro',
+  'exp-lazer': 'exp-restaurante',
+  'exp-contas': 'exp-internet',
+  'exp-tecnologia': 'exp-compras-online',
+};
+
+function normalizeCategoryId(id: string): string {
+  return LEGACY_CAT_MAPPING[id] || id;
+}
+
 export function useFinanceStorage() {
   const [currentMonthKey, setCurrentMonthKey] = useState<string>(() => getCurrentMonthKey());
 
@@ -61,7 +72,15 @@ export function useFinanceStorage() {
   const [expenseCategories, setExpenseCategories] = useState<Category[]>(() => {
     try {
       const stored = localStorage.getItem(STORAGE_KEYS.EXPENSE_CATS);
-      if (stored) return JSON.parse(stored);
+      if (stored) {
+        const parsed: Category[] = JSON.parse(stored);
+        const existingIds = new Set(parsed.map((c) => c.id));
+        const missing = INITIAL_EXPENSE_CATEGORIES.filter((c) => !existingIds.has(c.id));
+        if (missing.length > 0) {
+          return [...parsed, ...missing];
+        }
+        return parsed;
+      }
     } catch {
       // ignore
     }
@@ -72,7 +91,13 @@ export function useFinanceStorage() {
   const [transactions, setTransactions] = useState<Transaction[]>(() => {
     try {
       const stored = localStorage.getItem(STORAGE_KEYS.TRANSACTIONS);
-      if (stored) return JSON.parse(stored);
+      if (stored) {
+        const parsed: Transaction[] = JSON.parse(stored);
+        return parsed.map((t) => ({
+          ...t,
+          categoryId: normalizeCategoryId(t.categoryId),
+        }));
+      }
     } catch {
       // ignore
     }
@@ -141,7 +166,13 @@ export function useFinanceStorage() {
   const [recurringRules, setRecurringRules] = useState<RecurringExpenseRule[]>(() => {
     try {
       const stored = localStorage.getItem(STORAGE_KEYS.RECURRING_RULES);
-      if (stored) return JSON.parse(stored);
+      if (stored) {
+        const parsed: RecurringExpenseRule[] = JSON.parse(stored);
+        return parsed.map((r) => ({
+          ...r,
+          categoryId: normalizeCategoryId(r.categoryId),
+        }));
+      }
     } catch {
       // ignore
     }
@@ -381,6 +412,15 @@ export function useFinanceStorage() {
       setExpenseCategories((prev) => [...prev, newCategory]);
     }
     return newCategory;
+  }, []);
+
+  const updateCategory = useCallback((categoryId: string, updates: Partial<Category>) => {
+    setIncomeCategories((prev) =>
+      prev.map((c) => (c.id === categoryId ? { ...c, ...updates } : c))
+    );
+    setExpenseCategories((prev) =>
+      prev.map((c) => (c.id === categoryId ? { ...c, ...updates } : c))
+    );
   }, []);
 
   const deleteCategory = useCallback((categoryId: string, type: CategoryType) => {
@@ -728,6 +768,7 @@ export function useFinanceStorage() {
     setCategoryBudget,
     monthSummary,
     addCategory,
+    updateCategory,
     deleteCategory,
     addTransaction,
     updateTransaction,

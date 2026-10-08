@@ -13,6 +13,7 @@ import { formatMonthYearLabel, getCurrentMonthKey } from '../utils/dateUtils';
 import { MonthSelectorModal } from './MonthSelectorModal';
 import { UserProfile } from '../types/finance';
 import { useCurrencyVisibility } from '../context/CurrencyVisibilityContext';
+import { useAppTheme } from '../context/ThemeContext';
 
 interface HeaderProps {
   currentMonthKey: string;
@@ -36,6 +37,7 @@ export const Header: React.FC<HeaderProps> = ({
   onResetData,
 }) => {
   const { hideValues, toggleHideValues } = useCurrencyVisibility();
+  const { theme } = useAppTheme();
   const [isMonthModalOpen, setIsMonthModalOpen] = useState(false);
   const [showConfirmReset, setShowConfirmReset] = useState(false);
 
@@ -66,7 +68,9 @@ export const Header: React.FC<HeaderProps> = ({
         {/* Top Brand row */}
         <div className="flex items-center justify-between h-11">
           <div className="flex items-center gap-2">
-            <div className="w-7 h-7 rounded-xl bg-gradient-to-tr from-teal-400 via-sky-400 to-indigo-300 flex items-center justify-center text-white text-xs font-bold shadow-xs">
+            <div
+              className={`w-7 h-7 rounded-xl bg-gradient-to-tr ${theme.badgeGradient} flex items-center justify-center ${theme.badgeTextColor} text-xs font-bold shadow-xs`}
+            >
               FP
             </div>
             <h1 className="font-semibold text-slate-800 text-sm tracking-tight">

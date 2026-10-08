@@ -10,6 +10,7 @@ interface CategoryManagerModalProps {
   expenseCategories: Category[];
   transactions: Transaction[];
   onAddCategory: (category: Omit<Category, 'id'>) => void;
+  onUpdateCategory?: (id: string, updates: Partial<Category>) => void;
   onDeleteCategory: (id: string, type: CategoryType) => void;
 }
 
@@ -20,6 +21,7 @@ export const CategoryManagerModal: React.FC<CategoryManagerModalProps> = ({
   expenseCategories,
   transactions,
   onAddCategory,
+  onUpdateCategory,
   onDeleteCategory,
 }) => {
   if (!isOpen) return null;
@@ -57,6 +59,7 @@ export const CategoryManagerModal: React.FC<CategoryManagerModalProps> = ({
             expenseCategories={expenseCategories}
             transactions={transactions}
             onAddCategory={onAddCategory}
+            onUpdateCategory={onUpdateCategory}
             onDeleteCategory={onDeleteCategory}
           />
         </div>

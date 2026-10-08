@@ -38,6 +38,7 @@ export default function App() {
     setCategoryBudget,
     monthSummary,
     addCategory,
+    updateCategory,
     deleteCategory,
     addTransaction,
     updateTransaction,
@@ -150,7 +151,7 @@ export default function App() {
 
                 <TransactionsList
                   transactions={currentMonthTransactions}
-                  defaultPageSize={5}
+                  defaultPageSize={10}
                   categories={allCategories}
                   onDeleteTransaction={deleteTransaction}
                   onUpdateTransaction={updateTransaction}
@@ -229,7 +230,7 @@ export default function App() {
                 onUpdateTransaction={updateTransaction}
                 onOpenAddModal={() => setIsAddModalOpen(true)}
                 onExportCSV={handleExportCSV}
-                defaultPageSize={10}
+                defaultPageSize="all"
               />
             </div>
           )}
@@ -271,6 +272,7 @@ export default function App() {
                 expenseCategories={expenseCategories}
                 transactions={transactions}
                 onAddCategory={addCategory}
+                onUpdateCategory={updateCategory}
                 onDeleteCategory={deleteCategory}
               />
             </div>
@@ -316,6 +318,7 @@ export default function App() {
         expenseCategories={expenseCategories}
         transactions={transactions}
         onAddCategory={addCategory}
+        onUpdateCategory={updateCategory}
         onDeleteCategory={deleteCategory}
       />
 

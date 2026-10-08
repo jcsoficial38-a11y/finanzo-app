@@ -1,3 +1,5 @@
+import { ThemeId } from '../utils/themeConfig';
+
 export type CategoryType = 'income' | 'expense';
 
 export type ExpenseType = 'fixed' | 'variable' | 'installment';
@@ -59,6 +61,7 @@ export interface UserProfile {
   avatarColor?: string; // Background color for initial avatar
   bio?: string;
   joinedDate: string;
+  themeColor?: ThemeId;
 }
 
 export type ActiveTab = 'dashboard' | 'history' | 'charts' | 'categories';
