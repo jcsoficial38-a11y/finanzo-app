@@ -23,6 +23,7 @@ import {
   Cloud,
   RefreshCw,
   LogOut,
+  Loader2,
 } from 'lucide-react';
 import { UserProfile } from '../types/finance';
 import { PASTEL_COLORS } from '../data/initialData';
@@ -104,6 +105,26 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
   // Clear Transactions state & safety confirmation
   const [showClearConfirmModal, setShowClearConfirmModal] = useState(false);
   const [clearSuccess, setClearSuccess] = useState('');
+
+  // Google Login state
+  const [isLoggingInGoogle, setIsLoggingInGoogle] = useState(false);
+  const [googleAuthError, setGoogleAuthError] = useState('');
+
+  const handleLoginGoogleClick = async () => {
+    if (!onLoginGoogle) return;
+    setIsLoggingInGoogle(true);
+    setGoogleAuthError('');
+    try {
+      await onLoginGoogle();
+    } catch (err: any) {
+      if (err?.code !== 'auth/popup-closed-by-user' && err?.code !== 'auth/cancelled-popup-request') {
+        console.error('[GoogleAuth] Erro na autenticação:', err);
+        setGoogleAuthError(err?.message || 'Falha ao autenticar com o Google.');
+      }
+    } finally {
+      setIsLoggingInGoogle(false);
+    }
+  };
 
   const handleConfirmClearTransactions = () => {
     if (onClearTransactions) {
@@ -854,15 +875,31 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
               <div className="space-y-2 pt-1 border-t border-sky-200/60">
                 <button
                   type="button"
-                  onClick={onLoginGoogle}
-                  className="w-full py-2.5 px-3 bg-sky-600 hover:bg-sky-700 active:scale-98 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all shadow-xs"
+                  onClick={handleLoginGoogleClick}
+                  disabled={isLoggingInGoogle}
+                  className="w-full py-2.5 px-3 bg-sky-600 hover:bg-sky-700 active:scale-98 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all shadow-xs disabled:opacity-75 disabled:cursor-not-allowed"
                 >
-                  <Cloud className="w-4 h-4 text-white" />
-                  <span>Conectar com Google (Ativar Nuvem)</span>
+                  {isLoggingInGoogle ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin text-white" />
+                      <span>Conectando com o Google...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Cloud className="w-4 h-4 text-white" />
+                      <span>Conectar com Google (Ativar Nuvem)</span>
+                    </>
+                  )}
                 </button>
-                <p className="text-[10px] text-sky-800/80 text-center">
-                  Todos os lançamentos locais serão salvos com segurança no Firebase Firestore.
-                </p>
+                {googleAuthError ? (
+                  <p className="text-[11px] text-rose-600 font-medium text-center">
+                    {googleAuthError}
+                  </p>
+                ) : (
+                  <p className="text-[10px] text-sky-800/80 text-center">
+                    Todos os lançamentos locais serão salvos com segurança no Firebase Firestore.
+                  </p>
+                )}
               </div>
             )}
           </div>

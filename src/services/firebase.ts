@@ -32,7 +32,7 @@ import {
   onSnapshot,
   writeBatch,
 } from 'firebase/firestore';
-import firebaseConfig from '../../firebase-applet-config.json';
+import appletConfig from '../../firebase-applet-config.json';
 import {
   Transaction,
   Category,
@@ -40,13 +40,30 @@ import {
   RecurringExpenseRule,
 } from '../types/finance';
 
-// Initialize Firebase App instance safely
+// Your web app's Firebase configuration
+export const firebaseConfig = {
+  apiKey: "AIzaSyDLxKnZW-_9J8RAspiA7ul7gtE7F63wr_M",
+  authDomain: "impressive-superstate-csmzh.firebaseapp.com",
+  projectId: "impressive-superstate-csmzh",
+  storageBucket: "impressive-superstate-csmzh.firebasestorage.app",
+  messagingSenderId: "1079469168199",
+  appId: "1:1079469168199:web:d58392f19152a1c698c362"
+};
+
+// Initialize Firebase
 const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
 
-// CRITICAL: getFirestore with database ID
-export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
+// Initialize Firestore (conecta na base de dados ativa do projeto)
+const databaseId =
+  (appletConfig as any)?.firestoreDatabaseId && (appletConfig as any).firestoreDatabaseId !== '(default)'
+    ? (appletConfig as any).firestoreDatabaseId
+    : undefined;
+export const db = databaseId ? getFirestore(app, databaseId) : getFirestore(app);
 export const auth = getAuth(app);
 export const googleProvider = new GoogleAuthProvider();
+googleProvider.setCustomParameters({
+  prompt: 'select_account',
+});
 
 // Error Handling Infrastructure conforming to Skill
 export enum OperationType {
