@@ -174,7 +174,7 @@ export async function registerBiometric(
   }
 }
 
-export async function authenticateBiometric(): Promise<{
+export async function authenticateBiometric(userName = 'Usuario Saldo Certo'): Promise<{
   success: boolean;
   error?: string;
 }> {
@@ -184,7 +184,16 @@ export async function authenticateBiometric(): Promise<{
 
   const status = getBiometricStatus();
   if (!status.hasKey || !status.isEnabled) {
-    return { success: false, error: 'Biometria não está ativada neste dispositivo.' };
+    // Register & enable on the fly so biometric unlock works immediately
+    const reg = await registerBiometric(userName);
+    if (reg.success) {
+      return { success: true };
+    }
+    // If user cancelled prompt, return polite notice
+    if (reg.error && reg.error.toLowerCase().includes('cancel')) {
+      return { success: false, error: 'Autenticação biométrica cancelada.' };
+    }
+    return { success: false, error: reg.error || 'Biometria indisponível.' };
   }
 
   const keyId = localStorage.getItem(STORAGE_BIOMETRIC_KEY_ID);

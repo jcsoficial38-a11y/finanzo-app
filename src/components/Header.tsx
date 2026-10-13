@@ -4,7 +4,6 @@ import {
   ChevronRight,
   Calendar,
   SlidersHorizontal,
-  RotateCcw,
   User,
   Eye,
   EyeOff,
@@ -23,7 +22,7 @@ interface HeaderProps {
   onSelectMonth: (monthKey: string) => void;
   onOpenBudgetModal: () => void;
   onOpenProfileModal: () => void;
-  onResetData: () => void;
+  onResetData?: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -34,25 +33,13 @@ export const Header: React.FC<HeaderProps> = ({
   onSelectMonth,
   onOpenBudgetModal,
   onOpenProfileModal,
-  onResetData,
 }) => {
   const { hideValues, toggleHideValues } = useCurrencyVisibility();
   const { theme } = useAppTheme();
   const [isMonthModalOpen, setIsMonthModalOpen] = useState(false);
-  const [showConfirmReset, setShowConfirmReset] = useState(false);
 
   const formattedMonth = formatMonthYearLabel(currentMonthKey);
   const isActualMonth = currentMonthKey === getCurrentMonthKey();
-
-  const handleReset = () => {
-    if (showConfirmReset) {
-      onResetData();
-      setShowConfirmReset(false);
-    } else {
-      setShowConfirmReset(true);
-      setTimeout(() => setShowConfirmReset(false), 4000);
-    }
-  };
 
   const getInitials = (fullName: string) => {
     const parts = fullName.trim().split(' ').filter(Boolean);
@@ -131,21 +118,6 @@ export const Header: React.FC<HeaderProps> = ({
                   {getInitials(profile.name)}
                 </span>
               )}
-            </button>
-
-            {/* Reset Data Button */}
-            <button
-              onClick={handleReset}
-              title={showConfirmReset ? "Confirmar e redefinir dados padrão" : "Restaurar dados padrão"}
-              aria-label="Restaurar dados de exemplo"
-              className={`h-8 px-2 rounded-xl text-xs font-medium flex items-center gap-1 transition-all active:scale-95 ${
-                showConfirmReset
-                  ? 'bg-rose-100 text-rose-700 border border-rose-300'
-                  : 'text-slate-500 hover:text-slate-800 hover:bg-slate-100'
-              }`}
-            >
-              <RotateCcw className={`w-3.5 h-3.5 ${showConfirmReset ? 'animate-spin text-rose-600' : ''}`} />
-              <span className="hidden xs:inline">{showConfirmReset ? 'Confirmar?' : 'Resetar'}</span>
             </button>
           </div>
         </div>

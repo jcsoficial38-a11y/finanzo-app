@@ -150,10 +150,6 @@ export function useFinanceStorage() {
       const stored = localStorage.getItem(STORAGE_KEYS.USER_PROFILE);
       if (stored) {
         const parsed = JSON.parse(stored);
-        if (parsed.name === 'JCS Oficial' || parsed.login === 'jcs.oficial38@gmail.com') {
-          localStorage.removeItem(STORAGE_KEYS.USER_PROFILE);
-          return DEFAULT_USER_PROFILE;
-        }
         return parsed;
       }
     } catch {

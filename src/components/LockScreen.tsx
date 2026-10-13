@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Lock, Delete, ShieldCheck, AlertCircle, Fingerprint } from 'lucide-react';
+import { Lock, Delete, AlertCircle, Fingerprint } from 'lucide-react';
 import { UserProfile } from '../types/finance';
 import { verifyPin, removePin, getPinStatus } from '../utils/pinSecurity';
 import {
@@ -23,14 +23,13 @@ export const LockScreen: React.FC<LockScreenProps> = ({ onUnlock, profile }) => 
   const pinStatus = getPinStatus();
   const bioStatus = getBiometricStatus();
   const hasPin = pinStatus.hasPin && pinStatus.isEnabled;
-  const hasBio = bioStatus.hasKey && bioStatus.isEnabled;
 
   const handleBiometricUnlock = async () => {
     if (isAuthenticatingBio) return;
     setIsAuthenticatingBio(true);
     setErrorMsg('');
     try {
-      const res = await authenticateBiometric();
+      const res = await authenticateBiometric(profile.name);
       if (res.success) {
         onUnlock();
       } else if (res.error) {
@@ -43,15 +42,15 @@ export const LockScreen: React.FC<LockScreenProps> = ({ onUnlock, profile }) => 
     }
   };
 
-  // Attempt biometric unlock on mount if biometrics is active
+  // Attempt biometric unlock on mount if biometrics is already registered and active
   useEffect(() => {
-    if (hasBio) {
+    if (bioStatus.hasKey && bioStatus.isEnabled) {
       const timer = setTimeout(() => {
         handleBiometricUnlock();
       }, 350);
       return () => clearTimeout(timer);
     }
-  }, [hasBio]);
+  }, [bioStatus.hasKey, bioStatus.isEnabled]);
 
   const handleDigit = (digit: string) => {
     if (digits.length >= 4) return;
@@ -101,8 +100,8 @@ export const LockScreen: React.FC<LockScreenProps> = ({ onUnlock, profile }) => 
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900 text-white p-4 select-none">
-      <div className="w-full max-w-xs flex flex-col items-center space-y-6">
-        {/* User avatar & lock indicator */}
+      <div className="w-full max-w-xs flex flex-col items-center space-y-5">
+        {/* User avatar & lock/biometric badge */}
         <div className="relative">
           <div
             className="w-20 h-20 rounded-full flex items-center justify-center overflow-hidden border-2 border-teal-500 shadow-xl"
@@ -125,11 +124,7 @@ export const LockScreen: React.FC<LockScreenProps> = ({ onUnlock, profile }) => 
             )}
           </div>
           <div className="absolute -bottom-1 -right-1 w-7 h-7 bg-teal-500 rounded-full flex items-center justify-center text-slate-900 shadow-md">
-            {hasBio ? (
-              <Fingerprint className="w-4 h-4 stroke-[2.5]" />
-            ) : (
-              <Lock className="w-3.5 h-3.5 stroke-[2.5]" />
-            )}
+            <Fingerprint className="w-4 h-4 stroke-[2.5]" />
           </div>
         </div>
 
@@ -139,32 +134,26 @@ export const LockScreen: React.FC<LockScreenProps> = ({ onUnlock, profile }) => 
             {profile.name}
           </h2>
           <p className="text-xs text-slate-400">
-            {hasPin
-              ? 'Digite sua senha ou use biometria para acessar'
-              : hasBio
-              ? 'Toque na digital para desbloquear'
-              : 'Digite sua senha de 4 dígitos para acessar'}
+            Digite sua senha ou use a digital para acessar
           </p>
         </div>
 
-        {/* Biometric Quick Button (if biometrics is enabled) */}
-        {hasBio && (
-          <button
-            type="button"
-            onClick={handleBiometricUnlock}
-            disabled={isAuthenticatingBio}
-            className="w-full py-2.5 px-4 bg-teal-500/15 hover:bg-teal-500/25 active:bg-teal-500/35 border border-teal-500/30 rounded-2xl flex items-center justify-center gap-2 text-xs font-bold text-teal-300 transition-all active:scale-98 shadow-xs"
-          >
-            <Fingerprint className="w-4 h-4 text-teal-400" />
-            <span>
-              {isAuthenticatingBio
-                ? 'Validando biometria...'
-                : 'Desbloquear com Biometria / Digital'}
-            </span>
-          </button>
-        )}
+        {/* Biometric Quick Button (ALWAYS VISIBLE for fast fingerprint unlock) */}
+        <button
+          type="button"
+          onClick={handleBiometricUnlock}
+          disabled={isAuthenticatingBio}
+          className="w-full py-2.5 px-4 bg-teal-500/20 hover:bg-teal-500/30 active:bg-teal-500/40 border border-teal-500/40 rounded-2xl flex items-center justify-center gap-2 text-xs font-bold text-teal-300 transition-all active:scale-98 shadow-xs"
+        >
+          <Fingerprint className="w-4 h-4 text-teal-400 shrink-0" />
+          <span>
+            {isAuthenticatingBio
+              ? 'Validando digital...'
+              : 'Desbloquear com Biometria / Digital'}
+          </span>
+        </button>
 
-        {/* 4 PIN Dots (if PIN is enabled) */}
+        {/* 4 PIN Dots */}
         {hasPin && (
           <div
             className={`flex items-center justify-center gap-4 py-1 ${
@@ -194,67 +183,55 @@ export const LockScreen: React.FC<LockScreenProps> = ({ onUnlock, profile }) => 
           </div>
         )}
 
-        {/* Numeric Keypad (shown if PIN is active) */}
-        {hasPin ? (
-          <div className="grid grid-cols-3 gap-3 w-full pt-1">
-            {['1', '2', '3', '4', '5', '6', '7', '8', '9'].map((num) => (
-              <button
-                key={num}
-                type="button"
-                onClick={() => handleDigit(num)}
-                className="h-16 rounded-2xl bg-slate-800/90 hover:bg-slate-700/80 active:bg-teal-600 text-xl font-semibold text-white transition-all active:scale-95 shadow-xs flex items-center justify-center"
-              >
-                {num}
-              </button>
-            ))}
-            {/* Bottom row: Biometric on left (if enabled) or blank */}
-            {hasBio ? (
-              <button
-                type="button"
-                onClick={handleBiometricUnlock}
-                disabled={isAuthenticatingBio}
-                title="Desbloquear com Biometria"
-                className="h-16 rounded-2xl bg-teal-950/40 border border-teal-500/30 hover:bg-teal-900/60 active:bg-teal-600 text-teal-300 transition-all active:scale-95 flex flex-col items-center justify-center gap-0.5"
-              >
-                <Fingerprint className="w-5 h-5 text-teal-400" />
-                <span className="text-[9px] font-bold tracking-tight">Digital</span>
-              </button>
-            ) : (
-              <div className="flex items-center justify-center" />
-            )}
+        {/* Numeric Keypad with BIOMETRIC BUTTON ALWAYS BESIDE ZERO */}
+        <div className="grid grid-cols-3 gap-3 w-full pt-1">
+          {['1', '2', '3', '4', '5', '6', '7', '8', '9'].map((num) => (
             <button
+              key={num}
               type="button"
-              onClick={() => handleDigit('0')}
+              onClick={() => handleDigit(num)}
               className="h-16 rounded-2xl bg-slate-800/90 hover:bg-slate-700/80 active:bg-teal-600 text-xl font-semibold text-white transition-all active:scale-95 shadow-xs flex items-center justify-center"
             >
-              0
+              {num}
             </button>
-            <button
-              type="button"
-              onClick={handleDelete}
-              title="Apagar"
-              className="h-16 rounded-2xl bg-slate-800/50 hover:bg-slate-700/80 text-slate-300 transition-all active:scale-95 flex items-center justify-center"
-            >
-              <Delete className="w-5 h-5" />
-            </button>
-          </div>
-        ) : (
-          /* If only biometrics is active without PIN */
-          <div className="w-full flex flex-col items-center py-4 space-y-4">
-            <button
-              type="button"
-              onClick={handleBiometricUnlock}
-              disabled={isAuthenticatingBio}
-              className="w-24 h-24 rounded-full bg-teal-500/20 hover:bg-teal-500/30 active:scale-95 border-2 border-teal-400 flex flex-col items-center justify-center gap-1 transition-all shadow-xl shadow-teal-500/20 text-teal-300"
-            >
-              <Fingerprint className="w-10 h-10 text-teal-400 animate-pulse" />
-              <span className="text-[10px] font-bold">Toque aqui</span>
-            </button>
-          </div>
-        )}
+          ))}
+
+          {/* Row 4 Col 1: BIOMETRIA / DIGITAL (Always visible next to 0) */}
+          <button
+            type="button"
+            onClick={handleBiometricUnlock}
+            disabled={isAuthenticatingBio}
+            title="Desbloquear com Biometria / Digital"
+            aria-label="Desbloquear com Biometria"
+            className="h-16 rounded-2xl bg-teal-500/20 hover:bg-teal-500/30 active:bg-teal-500/50 border border-teal-500/40 text-teal-300 transition-all active:scale-95 flex flex-col items-center justify-center gap-0.5 shadow-xs"
+          >
+            <Fingerprint className="w-6 h-6 text-teal-400" />
+            <span className="text-[9px] font-bold tracking-tight">Digital</span>
+          </button>
+
+          {/* Row 4 Col 2: Number 0 */}
+          <button
+            type="button"
+            onClick={() => handleDigit('0')}
+            className="h-16 rounded-2xl bg-slate-800/90 hover:bg-slate-700/80 active:bg-teal-600 text-xl font-semibold text-white transition-all active:scale-95 shadow-xs flex items-center justify-center"
+          >
+            0
+          </button>
+
+          {/* Row 4 Col 3: Delete / Backspace */}
+          <button
+            type="button"
+            onClick={handleDelete}
+            title="Apagar dígito"
+            aria-label="Apagar dígito"
+            className="h-16 rounded-2xl bg-slate-800/50 hover:bg-slate-700/80 text-slate-300 transition-all active:scale-95 flex items-center justify-center"
+          >
+            <Delete className="w-5 h-5" />
+          </button>
+        </div>
 
         {/* Forgot / Reset Security Option */}
-        <div className="pt-2 text-center">
+        <div className="pt-1 text-center">
           {showForgotConfirm ? (
             <div className="p-3 bg-slate-800/90 rounded-2xl border border-slate-700 space-y-2 text-xs">
               <p className="text-slate-300">
