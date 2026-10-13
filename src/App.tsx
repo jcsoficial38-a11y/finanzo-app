@@ -12,6 +12,7 @@ import { CategoryManagerView } from './components/CategoryManagerView';
 import { ProfileModal } from './components/ProfileModal';
 import { LockScreen } from './components/LockScreen';
 import { getPinStatus } from './utils/pinSecurity';
+import { getBiometricStatus } from './utils/biometricSecurity';
 import { ActiveTab } from './types/finance';
 import { formatCurrency } from './utils/formatters';
 import { exportMonthToCSV } from './utils/csvExport';
@@ -54,10 +55,11 @@ export default function App() {
   const [isCategoryModalOpen, setIsCategoryModalOpen] = useState(false);
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
 
-  // 4-Digit PIN Lock State
+  // 4-Digit PIN & Biometric Lock State
   const [isLocked, setIsLocked] = useState<boolean>(() => {
-    const status = getPinStatus();
-    return status.isEnabled && status.hasPin;
+    const pin = getPinStatus();
+    const bio = getBiometricStatus();
+    return (pin.isEnabled && pin.hasPin) || (bio.isEnabled && bio.hasKey);
   });
 
   // Combine income and expense categories for lookup
@@ -331,8 +333,9 @@ export default function App() {
         onUpdateProfile={updateUserProfile}
         onExportCSV={handleExportCSV}
         onPinChange={() => {
-          const status = getPinStatus();
-          if (!status.isEnabled || !status.hasPin) {
+          const pin = getPinStatus();
+          const bio = getBiometricStatus();
+          if ((!pin.isEnabled || !pin.hasPin) && (!bio.isEnabled || !bio.hasKey)) {
             setIsLocked(false);
           }
         }}

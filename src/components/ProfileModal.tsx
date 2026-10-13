@@ -12,15 +12,14 @@ import {
   Trash2,
   Upload,
   FileSpreadsheet,
-  Download,
   Lock,
   KeyRound,
   ShieldCheck,
   AlertCircle,
   Eye,
   EyeOff,
-  FolderArchive,
   Palette,
+  Fingerprint,
 } from 'lucide-react';
 import { UserProfile } from '../types/finance';
 import { PASTEL_COLORS } from '../data/initialData';
@@ -34,6 +33,14 @@ import {
   togglePinEnabled,
   PinStatus,
 } from '../utils/pinSecurity';
+import {
+  getBiometricStatus,
+  registerBiometric,
+  authenticateBiometric,
+  toggleBiometricEnabled,
+  removeBiometric,
+  BiometricStatus,
+} from '../utils/biometricSecurity';
 
 interface ProfileModalProps {
   isOpen: boolean;
@@ -72,7 +79,12 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
   const [pinError, setPinError] = useState('');
   const [pinSuccess, setPinSuccess] = useState('');
   const [showPinDigits, setShowPinDigits] = useState(false);
-  const [isDownloadingZip, setIsDownloadingZip] = useState(false);
+
+  // Biometric Security (Passkey / WebAuthn) State
+  const [bioStatus, setBioStatus] = useState<BiometricStatus>(() => getBiometricStatus());
+  const [isRegisteringBio, setIsRegisteringBio] = useState(false);
+  const [bioSuccess, setBioSuccess] = useState('');
+  const [bioError, setBioError] = useState('');
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -127,6 +139,60 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
     }
   };
 
+  const handleRegisterBiometric = async () => {
+    setIsRegisteringBio(true);
+    setBioError('');
+    setBioSuccess('');
+    try {
+      const res = await registerBiometric(profile.name || 'Usuário');
+      if (res.success) {
+        setBioStatus(getBiometricStatus());
+        setBioSuccess(res.message || 'Biometria ativada com sucesso!');
+        onPinChange?.();
+        setTimeout(() => setBioSuccess(''), 3500);
+      } else {
+        setBioError(res.error || 'Não foi possível registrar a biometria.');
+      }
+    } catch (err: any) {
+      setBioError(err?.message || 'Falha ao registrar biometria.');
+    } finally {
+      setIsRegisteringBio(false);
+    }
+  };
+
+  const handleToggleBiometric = () => {
+    const nextState = !bioStatus.isEnabled;
+    toggleBiometricEnabled(nextState);
+    setBioStatus(getBiometricStatus());
+    onPinChange?.();
+  };
+
+  const handleTestBiometric = async () => {
+    setBioError('');
+    setBioSuccess('');
+    try {
+      const res = await authenticateBiometric();
+      if (res.success) {
+        setBioSuccess('Biometria autenticada com sucesso! Digital reconhecida.');
+        setTimeout(() => setBioSuccess(''), 3500);
+      } else {
+        setBioError(res.error || 'Não foi possível reconhecer a biometria.');
+      }
+    } catch (err: any) {
+      setBioError(err?.message || 'Erro ao validar biometria.');
+    }
+  };
+
+  const handleRemoveBiometric = () => {
+    if (window.confirm('Deseja desativar e remover a chave biométrica deste dispositivo?')) {
+      removeBiometric();
+      setBioStatus(getBiometricStatus());
+      setBioSuccess('Chave biométrica removida com sucesso.');
+      onPinChange?.();
+      setTimeout(() => setBioSuccess(''), 3000);
+    }
+  };
+
   const handleShareWhatsApp = () => {
     const appUrl = 'https://ais-pre-q2bojieezkwr2dwlsx4f6m-257052289611.us-east1.run.app';
     const message = `*Finanças Pessoais - Saldo Certo*\n\nControle suas despesas, receitas e orçamentos mensais de forma simples e rápida no seu celular!\n\nAcesse pelo link:\n${appUrl}`;
@@ -135,19 +201,6 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
       '_blank',
       'noopener,noreferrer'
     );
-  };
-
-  const handleDownloadZip = () => {
-    setIsDownloadingZip(true);
-    const link = document.createElement('a');
-    link.href = '/projeto-financas.zip';
-    link.download = 'projeto-financas-saldo-certo.zip';
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    setTimeout(() => {
-      setIsDownloadingZip(false);
-    }, 2000);
   };
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -607,6 +660,93 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
             )}
           </div>
 
+          {/* Section: Cadastrar/Ativar Biometria (Passkey / WebAuthn) */}
+          <div className="p-3.5 bg-slate-50 rounded-2xl border border-slate-200/80 space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <div className="w-7 h-7 rounded-xl bg-violet-100 text-violet-700 flex items-center justify-center">
+                  <Fingerprint className="w-4 h-4" />
+                </div>
+                <div>
+                  <h4 className="text-xs font-bold text-slate-800">
+                    Cadastrar/Ativar Biometria
+                  </h4>
+                  <p className="text-[11px] text-slate-500">
+                    {bioStatus.hasKey
+                      ? bioStatus.isEnabled
+                        ? 'Desbloqueio por digital ativo'
+                        : 'Biometria salva, mas bloqueio pausado'
+                      : 'Proteja seu app com a digital do celular (Passkey)'}
+                  </p>
+                </div>
+              </div>
+
+              {bioStatus.hasKey && (
+                <button
+                  type="button"
+                  onClick={handleToggleBiometric}
+                  className={`px-2.5 py-1 rounded-xl text-xs font-semibold transition-colors ${
+                    bioStatus.isEnabled
+                      ? 'bg-violet-600 text-white shadow-2xs'
+                      : 'bg-slate-200 text-slate-700 hover:bg-slate-300'
+                  }`}
+                >
+                  {bioStatus.isEnabled ? 'Ativado' : 'Pausado'}
+                </button>
+              )}
+            </div>
+
+            {bioSuccess && (
+              <div className="flex items-center gap-1.5 p-2 bg-emerald-50 text-emerald-700 rounded-xl text-xs font-medium border border-emerald-200 animate-in fade-in">
+                <ShieldCheck className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                <span>{bioSuccess}</span>
+              </div>
+            )}
+
+            {bioError && (
+              <div className="flex items-center gap-1.5 p-2 bg-rose-50 text-rose-700 rounded-xl text-xs font-medium border border-rose-200 animate-in fade-in">
+                <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                <span>{bioError}</span>
+              </div>
+            )}
+
+            <div className="pt-1 border-t border-slate-200/60">
+              {bioStatus.hasKey ? (
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={handleTestBiometric}
+                    className="flex-1 py-2 px-3 bg-white hover:bg-violet-50 border border-slate-200 hover:border-violet-200 rounded-xl text-xs font-semibold text-violet-800 flex items-center justify-center gap-1.5 transition-colors shadow-2xs"
+                  >
+                    <Fingerprint className="w-3.5 h-3.5 text-violet-600" />
+                    <span>Testar Biometria</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleRemoveBiometric}
+                    className="py-2 px-3 bg-white hover:bg-rose-50 border border-slate-200 hover:border-rose-200 rounded-xl text-xs font-semibold text-rose-600 transition-colors"
+                  >
+                    Remover
+                  </button>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={handleRegisterBiometric}
+                  disabled={isRegisteringBio}
+                  className="w-full py-2 px-3 bg-white hover:bg-violet-50 border border-slate-200 hover:border-violet-200 rounded-xl text-xs font-semibold text-violet-800 flex items-center justify-center gap-1.5 transition-colors shadow-2xs"
+                >
+                  <Fingerprint className="w-3.5 h-3.5 text-violet-600" />
+                  <span>
+                    {isRegisteringBio
+                      ? 'Registrando chave biométrica...'
+                      : 'Cadastrar/Ativar Biometria'}
+                  </span>
+                </button>
+              )}
+            </div>
+          </div>
+
           {/* Section: Compartilhar Aplicativo no WhatsApp */}
           <div className="p-3.5 bg-emerald-50/70 rounded-2xl border border-emerald-100 space-y-2">
             <div className="flex items-center justify-between">
@@ -632,42 +772,6 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
             >
               <WhatsAppIcon className="w-4 h-4 text-white" />
               <span>Compartilhar Aplicativo no WhatsApp</span>
-            </button>
-          </div>
-
-          {/* Section: Baixar Arquivo ZIP do Projeto */}
-          <div className="p-3.5 bg-sky-50/70 rounded-2xl border border-sky-100 space-y-2">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <div className="w-7 h-7 rounded-xl bg-sky-600 text-white flex items-center justify-center shadow-2xs">
-                  <FolderArchive className="w-4 h-4 text-white" />
-                </div>
-                <div>
-                  <h4 className="text-xs font-bold text-sky-950">
-                    Baixar Código do Projeto (.ZIP)
-                  </h4>
-                  <p className="text-[11px] text-sky-700">
-                    Arquivo .zip com todo o código-fonte completo
-                  </p>
-                </div>
-              </div>
-              <span className="text-[10px] font-bold text-sky-700 bg-sky-100 px-2 py-0.5 rounded-md">
-                .ZIP
-              </span>
-            </div>
-
-            <button
-              type="button"
-              onClick={handleDownloadZip}
-              disabled={isDownloadingZip}
-              className="w-full py-2.5 px-3 bg-sky-600 hover:bg-sky-700 active:scale-98 disabled:opacity-75 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all shadow-xs"
-            >
-              <Download className="w-4 h-4 text-white" />
-              <span>
-                {isDownloadingZip
-                  ? 'Baixando Arquivo ZIP...'
-                  : 'Baixar Arquivo ZIP do Projeto'}
-              </span>
             </button>
           </div>
 
