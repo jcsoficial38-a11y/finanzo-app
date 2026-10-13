@@ -44,7 +44,6 @@ export default function App() {
     addTransaction,
     updateTransaction,
     deleteTransaction,
-    resetToInitialData,
     restoreFromBackup,
   } = useFinanceStorage();
 
@@ -88,7 +87,6 @@ export default function App() {
           onSelectMonth={(key) => setCurrentMonthKey(key)}
           onOpenBudgetModal={() => setIsBudgetModalOpen(true)}
           onOpenProfileModal={() => setIsProfileModalOpen(true)}
-          onResetData={resetToInitialData}
         />
 
         {/* Main Content Area */}

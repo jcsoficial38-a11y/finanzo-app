@@ -20,17 +20,17 @@ import {
   getNextMonthKey,
   addMonthsToDate,
 } from '../utils/dateUtils';
-
-const STORAGE_KEYS = {
-  INCOME_CATS: 'finanzo_income_categories_v1',
-  EXPENSE_CATS: 'finanzo_expense_categories_v1',
-  TRANSACTIONS: 'finanzo_transactions_v1',
-  BUDGETS: 'finanzo_monthly_budgets_v1',
-  DEFAULT_BUDGET: 'finanzo_default_budget_v1',
-  CATEGORY_BUDGETS: 'finanzo_category_budgets_v1',
-  USER_PROFILE: 'finanzo_user_profile_v1',
-  RECURRING_RULES: 'finanzo_recurring_fixed_rules_v1',
-};
+import {
+  PERSISTENT_STORAGE_KEYS,
+  safeGetLocalStorage,
+  safeSetLocalStorage,
+  saveMasterSnapshot,
+  getMasterSnapshot,
+  hasRealUserData,
+  markHasRealUserData,
+  requestPersistentStorage,
+  getFromIndexedDB,
+} from '../utils/persistentDatabase';
 
 const DEFAULT_MONTHLY_BUDGET = 3500.0;
 
@@ -57,84 +57,78 @@ function normalizeCategoryId(id: string): string {
 export function useFinanceStorage() {
   const [currentMonthKey, setCurrentMonthKey] = useState<string>(() => getCurrentMonthKey());
 
-  // Income Categories
+  // Income Categories - Reads from LocalStorage, with Master Snapshot & Initial fallback
   const [incomeCategories, setIncomeCategories] = useState<Category[]>(() => {
-    try {
-      const stored = localStorage.getItem(STORAGE_KEYS.INCOME_CATS);
-      if (stored) return JSON.parse(stored);
-    } catch {
-      // ignore
+    const stored = safeGetLocalStorage<Category[] | null>(PERSISTENT_STORAGE_KEYS.INCOME_CATS, null);
+    if (stored && Array.isArray(stored) && stored.length > 0) return stored;
+    const backup = getMasterSnapshot();
+    if (backup?.incomeCategories && backup.incomeCategories.length > 0) {
+      return backup.incomeCategories;
     }
     return INITIAL_INCOME_CATEGORIES;
   });
 
-  // Expense Categories
+  // Expense Categories - Reads from LocalStorage, with Master Snapshot & Initial fallback
   const [expenseCategories, setExpenseCategories] = useState<Category[]>(() => {
-    try {
-      const stored = localStorage.getItem(STORAGE_KEYS.EXPENSE_CATS);
-      if (stored) {
-        const parsed: Category[] = JSON.parse(stored);
-        const existingIds = new Set(parsed.map((c) => c.id));
-        const missing = INITIAL_EXPENSE_CATEGORIES.filter((c) => !existingIds.has(c.id));
-        if (missing.length > 0) {
-          return [...parsed, ...missing];
-        }
-        return parsed;
-      }
-    } catch {
-      // ignore
+    const stored = safeGetLocalStorage<Category[] | null>(PERSISTENT_STORAGE_KEYS.EXPENSE_CATS, null);
+    if (stored && Array.isArray(stored) && stored.length > 0) {
+      return stored;
+    }
+    const backup = getMasterSnapshot();
+    if (backup?.expenseCategories && backup.expenseCategories.length > 0) {
+      return backup.expenseCategories;
     }
     return INITIAL_EXPENSE_CATEGORIES;
   });
 
-  // Transactions
+  // Transactions - Reads from LocalStorage, with Master Snapshot fallback
   const [transactions, setTransactions] = useState<Transaction[]>(() => {
-    try {
-      const stored = localStorage.getItem(STORAGE_KEYS.TRANSACTIONS);
-      if (stored) {
-        const parsed: Transaction[] = JSON.parse(stored);
-        return parsed.map((t) => ({
-          ...t,
-          categoryId: normalizeCategoryId(t.categoryId),
-        }));
-      }
-    } catch {
-      // ignore
+    const stored = safeGetLocalStorage<Transaction[] | null>(PERSISTENT_STORAGE_KEYS.TRANSACTIONS, null);
+    if (stored && Array.isArray(stored)) {
+      return stored.map((t) => ({
+        ...t,
+        categoryId: normalizeCategoryId(t.categoryId),
+      }));
+    }
+    const backup = getMasterSnapshot();
+    if (backup?.transactions && Array.isArray(backup.transactions)) {
+      return backup.transactions.map((t) => ({
+        ...t,
+        categoryId: normalizeCategoryId(t.categoryId),
+      }));
+    }
+    // If user already had data, do NOT regenerate sample data
+    if (hasRealUserData()) {
+      return [];
     }
     return getInitialTransactions();
   });
 
   // Budgets map: { '2026-09': 3500 }
   const [budgets, setBudgets] = useState<Record<string, number>>(() => {
-    try {
-      const stored = localStorage.getItem(STORAGE_KEYS.BUDGETS);
-      if (stored) return JSON.parse(stored);
-    } catch {
-      // ignore
-    }
+    const stored = safeGetLocalStorage<Record<string, number> | null>(PERSISTENT_STORAGE_KEYS.BUDGETS, null);
+    if (stored && typeof stored === 'object') return stored;
+    const backup = getMasterSnapshot();
+    if (backup?.budgets) return backup.budgets;
     return {
       [getCurrentMonthKey()]: DEFAULT_MONTHLY_BUDGET,
     };
   });
 
   const [defaultBudget, setDefaultBudget] = useState<number>(() => {
-    try {
-      const stored = localStorage.getItem(STORAGE_KEYS.DEFAULT_BUDGET);
-      if (stored) return Number(stored);
-    } catch {
-      // ignore
-    }
+    const stored = safeGetLocalStorage<number | null>(PERSISTENT_STORAGE_KEYS.DEFAULT_BUDGET, null);
+    if (typeof stored === 'number' && !isNaN(stored)) return stored;
+    const backup = getMasterSnapshot();
+    if (typeof backup?.defaultBudget === 'number') return backup.defaultBudget;
     return DEFAULT_MONTHLY_BUDGET;
   });
 
   // Category Budgets: { [categoryId]: number }
   const [categoryBudgets, setCategoryBudgets] = useState<Record<string, number>>(() => {
-    try {
-      const stored = localStorage.getItem(STORAGE_KEYS.CATEGORY_BUDGETS);
-      if (stored) return JSON.parse(stored);
-    } catch {
-      // ignore
-    }
+    const stored = safeGetLocalStorage<Record<string, number> | null>(PERSISTENT_STORAGE_KEYS.CATEGORY_BUDGETS, null);
+    if (stored && typeof stored === 'object') return stored;
+    const backup = getMasterSnapshot();
+    if (backup?.categoryBudgets) return backup.categoryBudgets;
     return {
       'exp-moradia': 1500,
       'exp-mercado': 700,
@@ -146,67 +140,141 @@ export function useFinanceStorage() {
 
   // User Profile
   const [userProfile, setUserProfile] = useState<UserProfile>(() => {
-    try {
-      const stored = localStorage.getItem(STORAGE_KEYS.USER_PROFILE);
-      if (stored) {
-        const parsed = JSON.parse(stored);
-        return parsed;
-      }
-    } catch {
-      // ignore
+    const stored = safeGetLocalStorage<UserProfile | null>(PERSISTENT_STORAGE_KEYS.USER_PROFILE, null);
+    if (stored && typeof stored === 'object' && stored.name) {
+      return stored;
     }
+    const backup = getMasterSnapshot();
+    if (backup?.userProfile?.name) return backup.userProfile;
     return DEFAULT_USER_PROFILE;
   });
 
   // Recurring Fixed Expenses Rules
   const [recurringRules, setRecurringRules] = useState<RecurringExpenseRule[]>(() => {
-    try {
-      const stored = localStorage.getItem(STORAGE_KEYS.RECURRING_RULES);
-      if (stored) {
-        const parsed: RecurringExpenseRule[] = JSON.parse(stored);
-        return parsed.map((r) => ({
-          ...r,
-          categoryId: normalizeCategoryId(r.categoryId),
-        }));
-      }
-    } catch {
-      // ignore
+    const stored = safeGetLocalStorage<RecurringExpenseRule[] | null>(PERSISTENT_STORAGE_KEYS.RECURRING_RULES, null);
+    if (stored && Array.isArray(stored)) {
+      return stored.map((r) => ({
+        ...r,
+        categoryId: normalizeCategoryId(r.categoryId),
+      }));
+    }
+    const backup = getMasterSnapshot();
+    if (backup?.recurringRules && Array.isArray(backup.recurringRules)) {
+      return backup.recurringRules.map((r) => ({
+        ...r,
+        categoryId: normalizeCategoryId(r.categoryId),
+      }));
+    }
+    if (hasRealUserData()) {
+      return [];
     }
     return getInitialRecurringRules();
   });
 
-  // Persist to localStorage
+  // 1. Request Browser Durable Storage & Hydrate from IndexedDB if needed
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEYS.INCOME_CATS, JSON.stringify(incomeCategories));
+    requestPersistentStorage();
+
+    const healFromIndexedDB = async () => {
+      try {
+        const dbTxs = await getFromIndexedDB<Transaction[]>(PERSISTENT_STORAGE_KEYS.TRANSACTIONS);
+        if (dbTxs && Array.isArray(dbTxs) && dbTxs.length > 0) {
+          setTransactions((prev) => {
+            if (prev.length === 0) {
+              return dbTxs;
+            }
+            return prev;
+          });
+        }
+
+        const dbProfile = await getFromIndexedDB<UserProfile>(PERSISTENT_STORAGE_KEYS.USER_PROFILE);
+        if (dbProfile && dbProfile.name) {
+          setUserProfile(dbProfile);
+        }
+
+        const dbExpCats = await getFromIndexedDB<Category[]>(PERSISTENT_STORAGE_KEYS.EXPENSE_CATS);
+        if (dbExpCats && Array.isArray(dbExpCats) && dbExpCats.length > 0) {
+          setExpenseCategories(dbExpCats);
+        }
+
+        const dbIncCats = await getFromIndexedDB<Category[]>(PERSISTENT_STORAGE_KEYS.INCOME_CATS);
+        if (dbIncCats && Array.isArray(dbIncCats) && dbIncCats.length > 0) {
+          setIncomeCategories(dbIncCats);
+        }
+
+        const dbBudgets = await getFromIndexedDB<Record<string, number>>(PERSISTENT_STORAGE_KEYS.BUDGETS);
+        if (dbBudgets) {
+          setBudgets(dbBudgets);
+        }
+
+        const dbRules = await getFromIndexedDB<RecurringExpenseRule[]>(PERSISTENT_STORAGE_KEYS.RECURRING_RULES);
+        if (dbRules && Array.isArray(dbRules) && dbRules.length > 0) {
+          setRecurringRules(dbRules);
+        }
+      } catch (err) {
+        console.warn('[FinanzoStorage] Sincronização IndexedDB:', err);
+      }
+    };
+
+    healFromIndexedDB();
+  }, []);
+
+  // 2. Persist with dual-engine (LocalStorage + IndexedDB mirror)
+  useEffect(() => {
+    safeSetLocalStorage(PERSISTENT_STORAGE_KEYS.INCOME_CATS, incomeCategories);
   }, [incomeCategories]);
 
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEYS.EXPENSE_CATS, JSON.stringify(expenseCategories));
+    safeSetLocalStorage(PERSISTENT_STORAGE_KEYS.EXPENSE_CATS, expenseCategories);
   }, [expenseCategories]);
 
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEYS.TRANSACTIONS, JSON.stringify(transactions));
+    safeSetLocalStorage(PERSISTENT_STORAGE_KEYS.TRANSACTIONS, transactions);
   }, [transactions]);
 
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEYS.BUDGETS, JSON.stringify(budgets));
+    safeSetLocalStorage(PERSISTENT_STORAGE_KEYS.BUDGETS, budgets);
   }, [budgets]);
 
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEYS.DEFAULT_BUDGET, String(defaultBudget));
+    safeSetLocalStorage(PERSISTENT_STORAGE_KEYS.DEFAULT_BUDGET, defaultBudget);
   }, [defaultBudget]);
 
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEYS.CATEGORY_BUDGETS, JSON.stringify(categoryBudgets));
+    safeSetLocalStorage(PERSISTENT_STORAGE_KEYS.CATEGORY_BUDGETS, categoryBudgets);
   }, [categoryBudgets]);
 
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEYS.USER_PROFILE, JSON.stringify(userProfile));
+    safeSetLocalStorage(PERSISTENT_STORAGE_KEYS.USER_PROFILE, userProfile);
   }, [userProfile]);
 
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEYS.RECURRING_RULES, JSON.stringify(recurringRules));
+    safeSetLocalStorage(PERSISTENT_STORAGE_KEYS.RECURRING_RULES, recurringRules);
   }, [recurringRules]);
+
+  // 3. Continuous Master Snapshot Backup
+  useEffect(() => {
+    saveMasterSnapshot({
+      transactions,
+      incomeCategories,
+      expenseCategories,
+      budgets,
+      defaultBudget,
+      categoryBudgets,
+      userProfile,
+      recurringRules,
+      savedAt: Date.now(),
+    });
+  }, [
+    transactions,
+    incomeCategories,
+    expenseCategories,
+    budgets,
+    defaultBudget,
+    categoryBudgets,
+    userProfile,
+    recurringRules,
+  ]);
 
   // Automatically project recurring fixed expenses to all future months (up to 24 months ahead)
   // Only runs when recurringRules changes (instantaneous and lag-free month switching)
@@ -374,6 +442,7 @@ export function useFinanceStorage() {
 
   // Budget management
   const setMonthBudget = useCallback((monthKey: string, amount: number, setAsDefault = false) => {
+    markHasRealUserData();
     setBudgets((prev) => ({
       ...prev,
       [monthKey]: amount,
@@ -385,6 +454,7 @@ export function useFinanceStorage() {
 
   // Category management
   const addCategory = useCallback((categoryData: Omit<Category, 'id'>) => {
+    markHasRealUserData();
     const id = `cat-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
     const newCategory: Category = {
       ...categoryData,
@@ -400,6 +470,7 @@ export function useFinanceStorage() {
   }, []);
 
   const updateCategory = useCallback((categoryId: string, updates: Partial<Category>) => {
+    markHasRealUserData();
     setIncomeCategories((prev) =>
       prev.map((c) => (c.id === categoryId ? { ...c, ...updates } : c))
     );
@@ -409,6 +480,7 @@ export function useFinanceStorage() {
   }, []);
 
   const deleteCategory = useCallback((categoryId: string, type: CategoryType) => {
+    markHasRealUserData();
     if (type === 'income') {
       setIncomeCategories((prev) => prev.filter((c) => c.id !== categoryId));
     } else {
@@ -417,6 +489,7 @@ export function useFinanceStorage() {
   }, []);
 
   const setCategoryBudget = useCallback((categoryId: string, amount: number) => {
+    markHasRealUserData();
     setCategoryBudgets((prev) => ({
       ...prev,
       [categoryId]: Math.max(0, amount),
@@ -424,6 +497,7 @@ export function useFinanceStorage() {
   }, []);
 
   const updateUserProfile = useCallback((updates: Partial<UserProfile>) => {
+    markHasRealUserData();
     setUserProfile((prev) => ({
       ...prev,
       ...updates,
@@ -520,10 +594,12 @@ export function useFinanceStorage() {
         };
 
         setTransactions((prev) => [newTx, ...prev]);
+        markHasRealUserData();
         return [newTx];
       }
 
       // Handle Installment Expense (repeated in subsequent months)
+      markHasRealUserData();
       const count = Math.max(2, installmentsCount);
       const installmentAmount = isTotalAmount
         ? Number((amount / count).toFixed(2))
@@ -615,6 +691,7 @@ export function useFinanceStorage() {
           );
         });
       }
+      markHasRealUserData();
     },
     [transactions]
   );
@@ -628,6 +705,7 @@ export function useFinanceStorage() {
         deleteRecurringMode?: 'single' | 'future';
       }
     ) => {
+      markHasRealUserData();
       const { deleteAllInstallments = false, deleteRecurringMode = 'single' } = options || {};
 
       setTransactions((prev) => {
@@ -685,24 +763,9 @@ export function useFinanceStorage() {
     []
   );
 
-  // Reset to initial sample data
+  // Protected reset handler (Anti-reset safeguard: protects user data from any automated wipe)
   const resetToInitialData = useCallback(() => {
-    localStorage.removeItem(STORAGE_KEYS.INCOME_CATS);
-    localStorage.removeItem(STORAGE_KEYS.EXPENSE_CATS);
-    localStorage.removeItem(STORAGE_KEYS.TRANSACTIONS);
-    localStorage.removeItem(STORAGE_KEYS.BUDGETS);
-    localStorage.removeItem(STORAGE_KEYS.DEFAULT_BUDGET);
-    localStorage.removeItem(STORAGE_KEYS.USER_PROFILE);
-    localStorage.removeItem(STORAGE_KEYS.RECURRING_RULES);
-
-    setIncomeCategories(INITIAL_INCOME_CATEGORIES);
-    setExpenseCategories(INITIAL_EXPENSE_CATEGORIES);
-    setTransactions(getInitialTransactions());
-    setRecurringRules(getInitialRecurringRules());
-    setBudgets({ [getCurrentMonthKey()]: DEFAULT_MONTHLY_BUDGET });
-    setDefaultBudget(DEFAULT_MONTHLY_BUDGET);
-    setUserProfile(DEFAULT_USER_PROFILE);
-    setCurrentMonthKey(getCurrentMonthKey());
+    console.warn('[FinanzoStorage] Prevenção de Reset ativa: dados do usuário preservados.');
   }, []);
 
   // Restore complete backup
