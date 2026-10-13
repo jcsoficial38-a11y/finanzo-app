@@ -31,6 +31,16 @@ import {
   requestPersistentStorage,
   getFromIndexedDB,
 } from '../utils/persistentDatabase';
+import {
+  subscribeToAuth,
+  loginWithGoogle,
+  logoutUser,
+  syncUserDataToCloud,
+  fetchUserDataFromCloud,
+  deleteTransactionFromCloud,
+  clearAllTransactionsFromCloud,
+} from '../services/firebase';
+import type { User as FirebaseUser } from 'firebase/auth';
 
 const DEFAULT_MONTHLY_BUDGET = 3500.0;
 
@@ -171,6 +181,19 @@ export function useFinanceStorage() {
     return getInitialRecurringRules();
   });
 
+  // Firebase Authentication & Cloud Database Sync State
+  const [authUser, setAuthUser] = useState<FirebaseUser | null>(null);
+  const [cloudSyncState, setCloudSyncState] = useState<'idle' | 'syncing' | 'synced' | 'error'>('idle');
+  const [lastSyncTime, setLastSyncTime] = useState<Date | null>(null);
+
+  // Subscribe to Firebase Auth
+  useEffect(() => {
+    const unsubscribe = subscribeToAuth((user) => {
+      setAuthUser(user);
+    });
+    return () => unsubscribe();
+  }, []);
+
   // 1. Request Browser Durable Storage & Hydrate from IndexedDB if needed
   useEffect(() => {
     requestPersistentStorage();
@@ -266,6 +289,112 @@ export function useFinanceStorage() {
       savedAt: Date.now(),
     });
   }, [
+    transactions,
+    incomeCategories,
+    expenseCategories,
+    budgets,
+    defaultBudget,
+    categoryBudgets,
+    userProfile,
+    recurringRules,
+  ]);
+
+  // 4. Hydrate from Cloud Database (Firestore) when user signs in
+  useEffect(() => {
+    if (!authUser) return;
+
+    let isMounted = true;
+    const hydrateFromCloud = async () => {
+      setCloudSyncState('syncing');
+      try {
+        const cloudData = await fetchUserDataFromCloud(authUser.uid);
+        if (!isMounted) return;
+
+        if (cloudData && (cloudData.transactions.length > 0 || cloudData.incomeCategories.length > 0)) {
+          if (cloudData.transactions.length > 0) {
+            setTransactions(cloudData.transactions);
+          }
+          if (cloudData.incomeCategories.length > 0) {
+            setIncomeCategories(cloudData.incomeCategories);
+          }
+          if (cloudData.expenseCategories.length > 0) {
+            setExpenseCategories(cloudData.expenseCategories);
+          }
+          if (cloudData.budgets && Object.keys(cloudData.budgets).length > 0) {
+            setBudgets(cloudData.budgets);
+          }
+          if (typeof cloudData.defaultBudget === 'number') {
+            setDefaultBudget(cloudData.defaultBudget);
+          }
+          if (cloudData.categoryBudgets && Object.keys(cloudData.categoryBudgets).length > 0) {
+            setCategoryBudgets(cloudData.categoryBudgets);
+          }
+          if (cloudData.userProfile?.name) {
+            setUserProfile(cloudData.userProfile);
+          }
+          if (cloudData.recurringRules && cloudData.recurringRules.length > 0) {
+            setRecurringRules(cloudData.recurringRules);
+          }
+        } else {
+          // Cloud empty for this user: initial upload of local data
+          await syncUserDataToCloud(authUser.uid, {
+            transactions,
+            incomeCategories,
+            expenseCategories,
+            budgets,
+            defaultBudget,
+            categoryBudgets,
+            userProfile: {
+              ...userProfile,
+              name: authUser.displayName || userProfile.name,
+              avatarUrl: authUser.photoURL || userProfile.avatarUrl,
+            },
+            recurringRules,
+          });
+        }
+        setCloudSyncState('synced');
+        setLastSyncTime(new Date());
+      } catch (err) {
+        console.warn('[FinanzoStorage] Sincronização inicial com nuvem:', err);
+        setCloudSyncState('error');
+      }
+    };
+
+    hydrateFromCloud();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [authUser?.uid]);
+
+  // 5. Auto-sync to Cloud (Debounced to avoid quota waste)
+  useEffect(() => {
+    if (!authUser) return;
+
+    const timer = setTimeout(async () => {
+      try {
+        setCloudSyncState('syncing');
+        await syncUserDataToCloud(authUser.uid, {
+          transactions,
+          incomeCategories,
+          expenseCategories,
+          budgets,
+          defaultBudget,
+          categoryBudgets,
+          userProfile,
+          recurringRules,
+        });
+        setCloudSyncState('synced');
+        setLastSyncTime(new Date());
+      } catch (err) {
+        console.warn('[FinanzoStorage] Falha no auto-sync da nuvem:', err);
+        setCloudSyncState('error');
+      }
+    }, 1500);
+
+    return () => clearTimeout(timer);
+  }, [
+    authUser?.uid,
     transactions,
     incomeCategories,
     expenseCategories,
@@ -757,10 +886,13 @@ export function useFinanceStorage() {
         }
 
         // 3. Regular transaction deletion
+        if (authUser) {
+          deleteTransactionFromCloud(authUser.uid, transactionId).catch(() => {});
+        }
         return prev.filter((t) => t.id !== transactionId);
       });
     },
-    []
+    [authUser]
   );
 
   // Clear all transactions history (Zerar Histórico de Transações / Limpar Dados Salvos)
@@ -789,7 +921,37 @@ export function useFinanceStorage() {
       userProfile,
       savedAt: Date.now(),
     });
-  }, [incomeCategories, expenseCategories, budgets, defaultBudget, categoryBudgets, userProfile]);
+
+    // 5. Clear from cloud if logged in
+    if (authUser) {
+      clearAllTransactionsFromCloud(authUser.uid).catch(() => {});
+    }
+  }, [authUser, incomeCategories, expenseCategories, budgets, defaultBudget, categoryBudgets, userProfile]);
+
+  // Manual Trigger to sync immediately with Cloud
+  const syncNow = useCallback(async () => {
+    if (!authUser) {
+      return loginWithGoogle();
+    }
+    setCloudSyncState('syncing');
+    try {
+      await syncUserDataToCloud(authUser.uid, {
+        transactions,
+        incomeCategories,
+        expenseCategories,
+        budgets,
+        defaultBudget,
+        categoryBudgets,
+        userProfile,
+        recurringRules,
+      });
+      setCloudSyncState('synced');
+      setLastSyncTime(new Date());
+    } catch (err) {
+      console.warn('[FinanzoStorage] Erro no sync manual:', err);
+      setCloudSyncState('error');
+    }
+  }, [authUser, transactions, incomeCategories, expenseCategories, budgets, defaultBudget, categoryBudgets, userProfile, recurringRules]);
 
   // Protected reset handler (Anti-reset safeguard: protects user data from any automated wipe)
   const resetToInitialData = useCallback(() => {
@@ -852,5 +1014,11 @@ export function useFinanceStorage() {
     clearAllTransactions,
     resetToInitialData,
     restoreFromBackup,
+    authUser,
+    cloudSyncState,
+    lastSyncTime,
+    loginWithGoogle,
+    logoutUser,
+    syncNow,
   };
 }

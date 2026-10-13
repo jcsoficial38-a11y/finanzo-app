@@ -1,3 +1,17 @@
+/**
+ * =========================================================================================
+ * BANCO DE DADOS NA NUVEM (FIREBASE FIRESTORE):
+ * As chaves e configurações do banco de dados na nuvem estão centralizadas em:
+ * 1. /firebase-applet-config.json
+ * 2. /src/services/firebase.ts
+ *
+ * Para utilizar sua própria conta gratuita do Firebase ou Supabase:
+ * - Acesse https://console.firebase.google.com/ e crie um projeto gratuito.
+ * - Registre uma aplicação Web e copie o objeto de configuração (apiKey, projectId, etc.).
+ * - Cole as credenciais diretamente no arquivo /firebase-applet-config.json ou em /src/services/firebase.ts.
+ * =========================================================================================
+ */
+
 import React, { useState } from 'react';
 import { useFinanceStorage } from './hooks/useFinanceStorage';
 import { Header } from './components/Header';
@@ -46,6 +60,11 @@ export default function App() {
     deleteTransaction,
     clearAllTransactions,
     restoreFromBackup,
+    authUser,
+    cloudSyncState,
+    loginWithGoogle,
+    logoutUser,
+    syncNow,
   } = useFinanceStorage();
 
   const [activeTab, setActiveTab] = useState<ActiveTab>('dashboard');
@@ -88,6 +107,7 @@ export default function App() {
           onSelectMonth={(key) => setCurrentMonthKey(key)}
           onOpenBudgetModal={() => setIsBudgetModalOpen(true)}
           onOpenProfileModal={() => setIsProfileModalOpen(true)}
+          isCloudConnected={!!authUser}
         />
 
         {/* Main Content Area */}
@@ -332,6 +352,11 @@ export default function App() {
         onUpdateProfile={updateUserProfile}
         onExportCSV={handleExportCSV}
         onClearTransactions={clearAllTransactions}
+        authUser={authUser}
+        cloudSyncState={cloudSyncState}
+        onLoginGoogle={loginWithGoogle}
+        onLogoutGoogle={logoutUser}
+        onSyncNow={syncNow}
         onPinChange={() => {
           const pin = getPinStatus();
           const bio = getBiometricStatus();

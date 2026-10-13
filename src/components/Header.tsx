@@ -23,6 +23,7 @@ interface HeaderProps {
   onOpenBudgetModal: () => void;
   onOpenProfileModal: () => void;
   onResetData?: () => void;
+  isCloudConnected?: boolean;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -33,6 +34,7 @@ export const Header: React.FC<HeaderProps> = ({
   onSelectMonth,
   onOpenBudgetModal,
   onOpenProfileModal,
+  isCloudConnected,
 }) => {
   const { hideValues, toggleHideValues } = useCurrencyVisibility();
   const { theme } = useAppTheme();
@@ -101,24 +103,32 @@ export const Header: React.FC<HeaderProps> = ({
             </button>
 
             {/* Profile Avatar Trigger Button */}
-            <button
-              onClick={onOpenProfileModal}
-              title={`Perfil: ${profile.name} (${profile.login})`}
-              className="w-8 h-8 rounded-full flex items-center justify-center overflow-hidden border border-slate-200 hover:border-slate-400 transition-all shadow-2xs active:scale-95"
-              style={{ backgroundColor: profile.avatarUrl ? 'transparent' : profile.avatarColor || '#7dd3fc' }}
-            >
-              {profile.avatarUrl ? (
-                <img
-                  src={profile.avatarUrl}
-                  alt={profile.name}
-                  className="w-full h-full object-cover"
+            <div className="relative">
+              <button
+                onClick={onOpenProfileModal}
+                title={`Perfil: ${profile.name} (${profile.login})${isCloudConnected ? ' • Sincronizado na Nuvem' : ''}`}
+                className="w-8 h-8 rounded-full flex items-center justify-center overflow-hidden border border-slate-200 hover:border-slate-400 transition-all shadow-2xs active:scale-95"
+                style={{ backgroundColor: profile.avatarUrl ? 'transparent' : profile.avatarColor || '#7dd3fc' }}
+              >
+                {profile.avatarUrl ? (
+                  <img
+                    src={profile.avatarUrl}
+                    alt={profile.name}
+                    className="w-full h-full object-cover"
+                  />
+                ) : (
+                  <span className="text-[11px] font-bold text-slate-800">
+                    {getInitials(profile.name)}
+                  </span>
+                )}
+              </button>
+              {isCloudConnected && (
+                <span
+                  title="Sincronizado na Nuvem (Firestore)"
+                  className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 bg-emerald-500 border-2 border-white rounded-full shadow-2xs"
                 />
-              ) : (
-                <span className="text-[11px] font-bold text-slate-800">
-                  {getInitials(profile.name)}
-                </span>
               )}
-            </button>
+            </div>
           </div>
         </div>
 

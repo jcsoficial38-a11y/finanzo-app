@@ -1,0 +1,70 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // 1. Global Safety Net (default-deny)
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Helper functions
+    function isValidId(id) {
+      return id is string && id.size() > 0 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    // User-scoped collections
+    match /users/{userId} {
+      allow read: if isOwner(userId);
+
+      // Financial Transactions
+      match /transactions/{transactionId} {
+        allow read: if isOwner(userId);
+        allow create: if isOwner(userId) && isValidId(transactionId) && incoming().userId == userId;
+        allow update: if isOwner(userId) && incoming().userId == userId;
+        allow delete: if isOwner(userId);
+      }
+
+      // Financial Categories
+      match /categories/{categoryId} {
+        allow read: if isOwner(userId);
+        allow create: if isOwner(userId) && isValidId(categoryId) && incoming().userId == userId;
+        allow update: if isOwner(userId) && incoming().userId == userId;
+        allow delete: if isOwner(userId);
+      }
+
+      // User Profile
+      match /profile/{docId} {
+        allow read: if isOwner(userId);
+        allow create, update: if isOwner(userId) && incoming().userId == userId;
+        allow delete: if isOwner(userId);
+      }
+
+      // Budget Configurations
+      match /budgetConfig/{docId} {
+        allow read: if isOwner(userId);
+        allow create, update: if isOwner(userId) && incoming().userId == userId;
+        allow delete: if isOwner(userId);
+      }
+
+      // Recurring Rules
+      match /recurringRules/{ruleId} {
+        allow read: if isOwner(userId);
+        allow create: if isOwner(userId) && isValidId(ruleId) && incoming().userId == userId;
+        allow update: if isOwner(userId) && incoming().userId == userId;
+        allow delete: if isOwner(userId);
+      }
+    }
+  }
+}

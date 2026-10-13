@@ -20,6 +20,9 @@ import {
   EyeOff,
   Palette,
   Fingerprint,
+  Cloud,
+  RefreshCw,
+  LogOut,
 } from 'lucide-react';
 import { UserProfile } from '../types/finance';
 import { PASTEL_COLORS } from '../data/initialData';
@@ -52,6 +55,11 @@ interface ProfileModalProps {
   onExportCSV?: () => void;
   onPinChange?: () => void;
   onClearTransactions?: () => void;
+  authUser?: any;
+  cloudSyncState?: 'idle' | 'syncing' | 'synced' | 'error';
+  onLoginGoogle?: () => void;
+  onLogoutGoogle?: () => void;
+  onSyncNow?: () => void;
 }
 
 export const ProfileModal: React.FC<ProfileModalProps> = ({
@@ -64,6 +72,11 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
   onExportCSV,
   onPinChange,
   onClearTransactions,
+  authUser,
+  cloudSyncState = 'idle',
+  onLoginGoogle,
+  onLogoutGoogle,
+  onSyncNow,
 }) => {
   const [name, setName] = useState(profile.name);
   const [login, setLogin] = useState(profile.login);
@@ -760,6 +773,98 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
                 </button>
               )}
             </div>
+          </div>
+
+          {/* Section: Banco de Dados na Nuvem (Firebase Firestore) */}
+          <div className="p-3.5 bg-sky-50/70 rounded-2xl border border-sky-200/80 space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <div className="w-7 h-7 rounded-xl bg-sky-600 text-white flex items-center justify-center shadow-2xs shrink-0">
+                  <Cloud className="w-4 h-4 text-white" />
+                </div>
+                <div>
+                  <h4 className="text-xs font-bold text-sky-950 flex items-center gap-1.5">
+                    <span>Banco de Dados na Nuvem</span>
+                    <span
+                      className={`px-1.5 py-0.5 text-[9px] font-bold rounded-md ${
+                        authUser
+                          ? 'bg-emerald-100 text-emerald-800'
+                          : 'bg-slate-200 text-slate-700'
+                      }`}
+                    >
+                      {authUser ? 'Sincronizado Online' : 'Armazenamento Local'}
+                    </span>
+                  </h4>
+                  <p className="text-[11px] text-sky-700 leading-tight">
+                    {authUser
+                      ? `Conectado como ${authUser.displayName || authUser.email}`
+                      : 'Sincronize com o Firestore para acessar de qualquer celular ou PC'}
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {authUser ? (
+              <div className="space-y-2 pt-1 border-t border-sky-200/60">
+                <div className="flex items-center justify-between text-[11px] text-slate-600 bg-white/90 p-2 rounded-xl border border-sky-100">
+                  <span className="flex items-center gap-1.5 font-medium">
+                    <ShieldCheck className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                    <span>Status na Nuvem:</span>
+                  </span>
+                  <span className="font-semibold text-emerald-700 flex items-center gap-1">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                    <span>
+                      {cloudSyncState === 'syncing'
+                        ? 'Sincronizando...'
+                        : 'Firestore Conectado'}
+                    </span>
+                  </span>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={onSyncNow}
+                    disabled={cloudSyncState === 'syncing'}
+                    className="flex-1 py-2 px-3 bg-white hover:bg-sky-100/70 active:bg-sky-100 border border-sky-200 text-sky-800 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-colors shadow-2xs"
+                  >
+                    <RefreshCw
+                      className={`w-3.5 h-3.5 text-sky-600 ${
+                        cloudSyncState === 'syncing' ? 'animate-spin' : ''
+                      }`}
+                    />
+                    <span>
+                      {cloudSyncState === 'syncing'
+                        ? 'Sincronizando...'
+                        : 'Sincronizar Agora'}
+                    </span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={onLogoutGoogle}
+                    className="py-2 px-3 bg-white hover:bg-rose-50 border border-slate-200 hover:border-rose-200 text-rose-600 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-colors shadow-2xs"
+                  >
+                    <LogOut className="w-3.5 h-3.5" />
+                    <span>Desconectar</span>
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-2 pt-1 border-t border-sky-200/60">
+                <button
+                  type="button"
+                  onClick={onLoginGoogle}
+                  className="w-full py-2.5 px-3 bg-sky-600 hover:bg-sky-700 active:scale-98 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all shadow-xs"
+                >
+                  <Cloud className="w-4 h-4 text-white" />
+                  <span>Conectar com Google (Ativar Nuvem)</span>
+                </button>
+                <p className="text-[10px] text-sky-800/80 text-center">
+                  Todos os lançamentos locais serão salvos com segurança no Firebase Firestore.
+                </p>
+              </div>
+            )}
           </div>
 
           {/* Section: Compartilhar Aplicativo no WhatsApp */}

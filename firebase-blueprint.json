@@ -1,0 +1,107 @@
+{
+  "entities": {
+    "Transaction": {
+      "title": "Transaction",
+      "description": "Financial transaction (income or expense)",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "userId": { "type": "string", "maxLength": 128 },
+        "description": { "type": "string", "maxLength": 200 },
+        "amount": { "type": "number" },
+        "type": { "type": "string", "enum": ["income", "expense"] },
+        "categoryId": { "type": "string", "maxLength": 128 },
+        "date": { "type": "string", "maxLength": 30 },
+        "monthKey": { "type": "string", "maxLength": 10 },
+        "expenseType": { "type": "string", "maxLength": 30 },
+        "installmentCurrent": { "type": "number" },
+        "installmentTotal": { "type": "number" },
+        "installmentGroupId": { "type": "string", "maxLength": 128 },
+        "recurringGroupId": { "type": "string", "maxLength": 128 },
+        "notes": { "type": "string", "maxLength": 500 },
+        "createdAt": { "type": "string", "maxLength": 50 }
+      },
+      "required": ["id", "userId", "description", "amount", "type", "categoryId", "date", "monthKey"]
+    },
+    "Category": {
+      "title": "Category",
+      "description": "Financial category",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "userId": { "type": "string", "maxLength": 128 },
+        "name": { "type": "string", "maxLength": 100 },
+        "type": { "type": "string", "enum": ["income", "expense"] },
+        "iconName": { "type": "string", "maxLength": 50 },
+        "color": { "type": "string", "maxLength": 50 }
+      },
+      "required": ["id", "userId", "name", "type"]
+    },
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "User profile settings",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string", "maxLength": 128 },
+        "name": { "type": "string", "maxLength": 100 },
+        "login": { "type": "string", "maxLength": 100 },
+        "avatarUrl": { "type": "string", "maxLength": 500 },
+        "avatarColor": { "type": "string", "maxLength": 50 },
+        "bio": { "type": "string", "maxLength": 300 },
+        "joinedDate": { "type": "string", "maxLength": 50 }
+      },
+      "required": ["userId", "name", "login"]
+    },
+    "BudgetConfig": {
+      "title": "BudgetConfig",
+      "description": "Monthly and category budgets configuration",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string", "maxLength": 128 },
+        "defaultBudget": { "type": "number" },
+        "budgets": { "type": "object" },
+        "categoryBudgets": { "type": "object" },
+        "updatedAt": { "type": "string", "maxLength": 50 }
+      },
+      "required": ["userId", "defaultBudget"]
+    },
+    "RecurringRule": {
+      "title": "RecurringRule",
+      "description": "Recurring fixed expense rule",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "userId": { "type": "string", "maxLength": 128 },
+        "name": { "type": "string", "maxLength": 100 },
+        "amount": { "type": "number" },
+        "categoryId": { "type": "string", "maxLength": 128 },
+        "startMonthKey": { "type": "string", "maxLength": 10 },
+        "endMonthKey": { "type": "string", "maxLength": 10 },
+        "excludedMonthKeys": { "type": "array" }
+      },
+      "required": ["id", "userId", "name", "amount", "categoryId", "startMonthKey"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}/transactions/{transactionId}": {
+      "schema": "Transaction",
+      "description": "User financial transactions"
+    },
+    "/users/{userId}/categories/{categoryId}": {
+      "schema": "Category",
+      "description": "User custom categories"
+    },
+    "/users/{userId}/profile/{docId}": {
+      "schema": "UserProfile",
+      "description": "User account profile"
+    },
+    "/users/{userId}/budgetConfig/{docId}": {
+      "schema": "BudgetConfig",
+      "description": "User budget settings"
+    },
+    "/users/{userId}/recurringRules/{ruleId}": {
+      "schema": "RecurringRule",
+      "description": "User recurring rules"
+    }
+  }
+}
