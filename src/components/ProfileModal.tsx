@@ -51,6 +51,7 @@ interface ProfileModalProps {
   onUpdateProfile: (updates: Partial<UserProfile>) => void;
   onExportCSV?: () => void;
   onPinChange?: () => void;
+  onClearTransactions?: () => void;
 }
 
 export const ProfileModal: React.FC<ProfileModalProps> = ({
@@ -62,6 +63,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
   onUpdateProfile,
   onExportCSV,
   onPinChange,
+  onClearTransactions,
 }) => {
   const [name, setName] = useState(profile.name);
   const [login, setLogin] = useState(profile.login);
@@ -85,6 +87,19 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
   const [isRegisteringBio, setIsRegisteringBio] = useState(false);
   const [bioSuccess, setBioSuccess] = useState('');
   const [bioError, setBioError] = useState('');
+
+  // Clear Transactions state & safety confirmation
+  const [showClearConfirmModal, setShowClearConfirmModal] = useState(false);
+  const [clearSuccess, setClearSuccess] = useState('');
+
+  const handleConfirmClearTransactions = () => {
+    if (onClearTransactions) {
+      onClearTransactions();
+      setShowClearConfirmModal(false);
+      setClearSuccess('Histórico de transações zerado com sucesso!');
+      setTimeout(() => setClearSuccess(''), 3500);
+    }
+  };
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -815,6 +830,41 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
             )}
           </div>
 
+          {/* Section: Zerar Histórico de Transações / Limpar Dados Salvos */}
+          <div className="p-3.5 bg-rose-50/70 rounded-2xl border border-rose-200/80 space-y-3">
+            <div className="flex items-start justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <div className="w-7 h-7 rounded-xl bg-rose-600 text-white flex items-center justify-center shadow-2xs shrink-0">
+                  <Trash2 className="w-4 h-4 text-white" />
+                </div>
+                <div>
+                  <h4 className="text-xs font-bold text-rose-950">
+                    Zerar Histórico de Transações
+                  </h4>
+                  <p className="text-[11px] text-rose-700 leading-tight">
+                    Limpa todos os lançamentos ({totalTransactionsCount} {totalTransactionsCount === 1 ? 'transação' : 'transações'}), mantendo seu perfil e senhas
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {clearSuccess && (
+              <div className="flex items-center gap-1.5 p-2 bg-emerald-50 text-emerald-700 rounded-xl text-xs font-medium border border-emerald-200 animate-in fade-in">
+                <ShieldCheck className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                <span>{clearSuccess}</span>
+              </div>
+            )}
+
+            <button
+              type="button"
+              onClick={() => setShowClearConfirmModal(true)}
+              className="w-full py-2.5 px-3 bg-white hover:bg-rose-100/70 active:bg-rose-100 border border-rose-200 text-rose-700 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all shadow-2xs hover:border-rose-300 active:scale-98"
+            >
+              <Trash2 className="w-3.5 h-3.5 text-rose-600" />
+              <span>Zerar Histórico de Transações</span>
+            </button>
+          </div>
+
           {/* Action buttons */}
           <div className="flex gap-2 pt-2">
             <button
@@ -839,6 +889,47 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
           </div>
         </form>
       </div>
+
+      {/* Pop-up Modal de Confirmação de Segurança */}
+      {showClearConfirmModal && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-950/60 backdrop-blur-xs p-4 animate-in fade-in duration-150">
+          <div className="w-full max-w-sm bg-white rounded-3xl p-5 shadow-2xl border border-slate-100 space-y-4 animate-in zoom-in-95 duration-150">
+            <div className="w-12 h-12 rounded-2xl bg-rose-100 text-rose-600 flex items-center justify-center mx-auto shadow-2xs">
+              <AlertCircle className="w-6 h-6 text-rose-600" />
+            </div>
+
+            <div className="text-center space-y-2">
+              <h3 className="text-base font-bold text-slate-900">
+                Zerar Histórico de Transações?
+              </h3>
+              <p className="text-xs text-slate-600 leading-relaxed font-medium">
+                Tem certeza que deseja apagar todas as transações? Esta ação não pode ser desfeita.
+              </p>
+              <p className="text-[11px] text-slate-400">
+                Suas configurações básicas de perfil, categorias e senha/biometria serão mantidas normalmente.
+              </p>
+            </div>
+
+            <div className="flex gap-2 pt-1">
+              <button
+                type="button"
+                onClick={() => setShowClearConfirmModal(false)}
+                className="flex-1 py-2.5 px-3 bg-slate-100 hover:bg-slate-200 active:bg-slate-300 text-slate-700 rounded-xl text-xs font-semibold transition-colors min-h-[42px]"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmClearTransactions}
+                className="flex-1 py-2.5 px-3 bg-rose-600 hover:bg-rose-700 active:scale-98 text-white rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 shadow-xs min-h-[42px]"
+              >
+                <Trash2 className="w-3.5 h-3.5 text-white" />
+                <span>Sim, Apagar Tudo</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

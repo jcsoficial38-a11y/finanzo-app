@@ -763,6 +763,34 @@ export function useFinanceStorage() {
     []
   );
 
+  // Clear all transactions history (Zerar Histórico de Transações / Limpar Dados Salvos)
+  // Zera todo o histórico de lançamentos locais para 0 transações, mantendo perfil, categorias e senhas
+  const clearAllTransactions = useCallback(() => {
+    // 1. Clear in-memory transactions and recurring rules
+    setTransactions([]);
+    setRecurringRules([]);
+
+    // 2. Clear persisted transactions and recurring rules in LocalStorage and IndexedDB
+    safeSetLocalStorage(PERSISTENT_STORAGE_KEYS.TRANSACTIONS, []);
+    safeSetLocalStorage(PERSISTENT_STORAGE_KEYS.RECURRING_RULES, []);
+
+    // 3. Mark that user has interacted with data so sample transactions are never re-populated
+    markHasRealUserData();
+
+    // 4. Update master snapshot with empty transactions list, keeping user profile, categories and budgets
+    saveMasterSnapshot({
+      transactions: [],
+      recurringRules: [],
+      incomeCategories,
+      expenseCategories,
+      budgets,
+      defaultBudget,
+      categoryBudgets,
+      userProfile,
+      savedAt: Date.now(),
+    });
+  }, [incomeCategories, expenseCategories, budgets, defaultBudget, categoryBudgets, userProfile]);
+
   // Protected reset handler (Anti-reset safeguard: protects user data from any automated wipe)
   const resetToInitialData = useCallback(() => {
     console.warn('[FinanzoStorage] Prevenção de Reset ativa: dados do usuário preservados.');
@@ -821,6 +849,7 @@ export function useFinanceStorage() {
     addTransaction,
     updateTransaction,
     deleteTransaction,
+    clearAllTransactions,
     resetToInitialData,
     restoreFromBackup,
   };

@@ -44,6 +44,7 @@ export default function App() {
     addTransaction,
     updateTransaction,
     deleteTransaction,
+    clearAllTransactions,
     restoreFromBackup,
   } = useFinanceStorage();
 
@@ -330,6 +331,7 @@ export default function App() {
         currentBudget={currentMonthBudget}
         onUpdateProfile={updateUserProfile}
         onExportCSV={handleExportCSV}
+        onClearTransactions={clearAllTransactions}
         onPinChange={() => {
           const pin = getPinStatus();
           const bio = getBiometricStatus();
