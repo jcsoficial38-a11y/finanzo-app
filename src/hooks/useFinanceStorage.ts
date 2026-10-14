@@ -32,6 +32,7 @@ import {
   getFromIndexedDB,
 } from '../utils/persistentDatabase';
 import {
+  auth,
   subscribeToAuth,
   loginWithGoogle,
   logoutUser,
@@ -929,13 +930,14 @@ export function useFinanceStorage() {
   }, [authUser, incomeCategories, expenseCategories, budgets, defaultBudget, categoryBudgets, userProfile]);
 
   // Manual Trigger to sync immediately with Cloud
-  const syncNow = useCallback(async () => {
-    if (!authUser) {
+  const syncNow = useCallback(async (targetUserId?: string) => {
+    const uid = targetUserId || authUser?.uid || auth.currentUser?.uid;
+    if (!uid) {
       return loginWithGoogle();
     }
     setCloudSyncState('syncing');
     try {
-      await syncUserDataToCloud(authUser.uid, {
+      await syncUserDataToCloud(uid, {
         transactions,
         incomeCategories,
         expenseCategories,

@@ -45,6 +45,8 @@ import {
   removeBiometric,
   BiometricStatus,
 } from '../utils/biometricSecurity';
+import { getAuth, signInWithPopup, GoogleAuthProvider } from 'firebase/auth';
+import { auth, googleProvider } from '../services/firebase';
 
 interface ProfileModalProps {
   isOpen: boolean;

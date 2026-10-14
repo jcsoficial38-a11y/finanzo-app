@@ -45,13 +45,13 @@ export const firebaseConfig = {
   apiKey: "AIzaSyDLxKnZW-_9J8RAspiA7ul7gtE7F63wr_M",
   authDomain: "impressive-superstate-csmzh.firebaseapp.com",
   projectId: "impressive-superstate-csmzh",
-  storageBucket: "impressive-superstate-csmzh.firebasestorage.app",
+  storageBucket: "impressive-superstate-csmzh.appspot.com",
   messagingSenderId: "1079469168199",
   appId: "1:1079469168199:web:d58392f19152a1c698c362"
 };
 
 // Initialize Firebase
-const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
+export const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
 
 // Initialize Firestore (conecta na base de dados ativa do projeto)
 const databaseId =
@@ -60,6 +60,11 @@ const databaseId =
     : undefined;
 export const db = databaseId ? getFirestore(app, databaseId) : getFirestore(app);
 export const auth = getAuth(app);
+try {
+  auth.useDeviceLanguage();
+} catch {
+  // Ignore in SSR/headless environments
+}
 export const googleProvider = new GoogleAuthProvider();
 googleProvider.setCustomParameters({
   prompt: 'select_account',
