@@ -46,6 +46,7 @@ import {
   removeBiometric,
   BiometricStatus,
 } from '../utils/biometricSecurity';
+import { getApps } from 'firebase/app';
 import { getAuth, signInWithPopup, GoogleAuthProvider } from 'firebase/auth';
 import { auth, googleProvider } from '../services/firebase';
 
@@ -139,7 +140,15 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
     setGoogleAuthSuccess('');
 
     try {
-      const authInstance = auth || getAuth();
+      let authInstance = auth;
+      if (!authInstance) {
+        try {
+          authInstance = getApps().length ? getAuth() : null;
+        } catch {}
+      }
+      if (!authInstance) {
+        throw new Error('Serviço do Google indisponível no momento. O aplicativo está operando normalmente no modo Armazenamento Local.');
+      }
       const provider = googleProvider || new GoogleAuthProvider();
       provider.setCustomParameters({ prompt: 'select_account' });
 

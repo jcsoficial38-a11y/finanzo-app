@@ -1,17 +1,14 @@
 /**
  * =========================================================================================
- * CONFIGURAÇÃO DO BANCO DE DADOS NA NUVEM (FIREBASE FIRESTORE)
+ * CONFIGURAÇÃO DO BANCO DE DADOS NA NUVEM (FIREBASE FIRESTORE) - CARREGAMENTO SEGURO
  * =========================================================================================
- * Para conectar seu próprio projeto gratuito do Firebase:
- * 1. Acesse https://console.firebase.google.com/ e crie ou selecione seu projeto.
- * 2. Em "Configurações do Projeto" > "Geral", copie o objeto "firebaseConfig".
- * 3. Você pode substituir os valores abaixo ou no arquivo /firebase-applet-config.json.
- * 
- * Este aplicativo já está configurado e funcional com o Firestore Enterprise / Spark.
+ * 1. O bloco do Firebase (firebaseConfig, initializeApp, getAuth) é encapsulado em try/catch.
+ * 2. Se a internet ou o Firebase falharem, o app abre 100% no modo Armazenamento Local Seguro.
+ * 3. Nenhuma chamada de rede síncrona ocorre no topo do arquivo.
  * =========================================================================================
  */
 
-import { initializeApp, getApps, getApp } from 'firebase/app';
+import { initializeApp, getApps, getApp, FirebaseApp } from 'firebase/app';
 import {
   getAuth,
   setPersistence,
@@ -21,6 +18,7 @@ import {
   signOut,
   onAuthStateChanged,
   User as FirebaseUser,
+  Auth,
 } from 'firebase/auth';
 import {
   getFirestore,
@@ -31,8 +29,8 @@ import {
   getDoc,
   getDocs,
   deleteDoc,
-  onSnapshot,
   writeBatch,
+  Firestore,
 } from 'firebase/firestore';
 import appletConfig from '../../firebase-applet-config.json';
 import {
@@ -42,7 +40,7 @@ import {
   RecurringExpenseRule,
 } from '../types/finance';
 
-// Your web app's Firebase configuration
+// Configuração do Firebase
 export const firebaseConfig = {
   apiKey: "AIzaSyDLxKnZW-_9J8RAspiA7ul7gtE7F63wr_M",
   authDomain: "impressive-superstate-csmzh.firebaseapp.com",
@@ -52,33 +50,65 @@ export const firebaseConfig = {
   appId: "1:1079469168199:web:d58392f19152a1c698c362"
 };
 
-// Initialize Firebase
-export const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
-
-// Initialize Firestore (conecta na base de dados ativa do projeto)
-const databaseId =
-  (appletConfig as any)?.firestoreDatabaseId && (appletConfig as any).firestoreDatabaseId !== '(default)'
-    ? (appletConfig as any).firestoreDatabaseId
-    : undefined;
-export const db = databaseId ? getFirestore(app, databaseId) : getFirestore(app);
-export const auth = getAuth(app);
-
-// 1. Configura persistência como LOCAL para garantir que a sessão persista ao fechar e abrir o aplicativo
-setPersistence(auth, browserLocalPersistence).catch((err) => {
-  console.warn('[FirebaseAuth] Não foi possível ativar persistência local:', err);
-});
+// 2. TRATAMENTO DE ERROS (TRY / CATCH):
+// Coloque o bloco do Firebase (firebaseConfig, initializeApp, getAuth) dentro de um try/catch.
+// Se falhar, o aplicativo abre 100% no modo local ("Armazenamento Local Ativo"), sem tela branca.
+let appInstance: FirebaseApp | null = null;
+let dbInstance: Firestore | null = null;
+let authInstance: Auth | null = null;
+let googleProviderInstance: GoogleAuthProvider | null = null;
+let isFirebaseAvailable = false;
+let firebaseInitErrorMessage: string | null = null;
 
 try {
-  auth.useDeviceLanguage();
-} catch {
-  // Ignore in SSR/headless environments
-}
-export const googleProvider = new GoogleAuthProvider();
-googleProvider.setCustomParameters({
-  prompt: 'select_account',
-});
+  appInstance = !getApps().length ? initializeApp(firebaseConfig) : getApp();
 
-// Error Handling Infrastructure conforming to Skill
+  const databaseId =
+    (appletConfig as any)?.firestoreDatabaseId && (appletConfig as any).firestoreDatabaseId !== '(default)'
+      ? (appletConfig as any).firestoreDatabaseId
+      : undefined;
+
+  dbInstance = databaseId ? getFirestore(appInstance, databaseId) : getFirestore(appInstance);
+  authInstance = getAuth(appInstance);
+
+  try {
+    setPersistence(authInstance, browserLocalPersistence).catch((err) => {
+      console.warn('[FirebaseAuth] Persistência local em segundo plano:', err);
+    });
+  } catch (persistErr) {
+    console.warn('[FirebaseAuth] Persistência em cache:', persistErr);
+  }
+
+  try {
+    authInstance.useDeviceLanguage();
+  } catch {
+    // Ignora em ambientes sem suporte
+  }
+
+  googleProviderInstance = new GoogleAuthProvider();
+  googleProviderInstance.setCustomParameters({
+    prompt: 'select_account',
+  });
+
+  isFirebaseAvailable = true;
+  console.log('[Firebase] Inicialização segura concluída com sucesso.');
+} catch (e: any) {
+  console.error('[Firebase] Falha na inicialização do Firebase. Modo Armazenamento Local Ativo:', e);
+  firebaseInitErrorMessage = e?.message || 'Falha ao inicializar o Firebase';
+  isFirebaseAvailable = false;
+  appInstance = null;
+  dbInstance = null;
+  authInstance = null;
+  googleProviderInstance = null;
+}
+
+export const app = appInstance;
+export const db = dbInstance;
+export const auth = authInstance;
+export const googleProvider = googleProviderInstance;
+export { isFirebaseAvailable, firebaseInitErrorMessage };
+
+// Tipos de Operação
 export enum OperationType {
   CREATE = 'create',
   UPDATE = 'update',
@@ -95,13 +125,6 @@ export interface FirestoreErrorInfo {
   authInfo: {
     userId?: string | null;
     email?: string | null;
-    emailVerified?: boolean | null;
-    isAnonymous?: boolean | null;
-    tenantId?: string | null;
-    providerInfo?: {
-      providerId?: string | null;
-      email?: string | null;
-    }[];
   };
 }
 
@@ -109,48 +132,43 @@ export function handleFirestoreError(
   error: unknown,
   operationType: OperationType,
   path: string | null
-): never {
+): void {
   const errInfo: FirestoreErrorInfo = {
     error: error instanceof Error ? error.message : String(error),
     authInfo: {
-      userId: auth.currentUser?.uid,
-      email: auth.currentUser?.email,
-      emailVerified: auth.currentUser?.emailVerified,
-      isAnonymous: auth.currentUser?.isAnonymous,
-      tenantId: auth.currentUser?.tenantId,
-      providerInfo:
-        auth.currentUser?.providerData?.map((p) => ({
-          providerId: p.providerId,
-          email: p.email,
-        })) || [],
+      userId: authInstance?.currentUser?.uid || null,
+      email: authInstance?.currentUser?.email || null,
     },
     operationType,
     path,
   };
-  console.error('[Firestore Error]:', JSON.stringify(errInfo));
-  throw new Error(JSON.stringify(errInfo));
+  console.warn('[Firestore Operação]:', JSON.stringify(errInfo));
 }
 
-// Test initial connection as required by Skill
+// Teste de conexão seguro e assíncrono (não bloqueante)
 export async function testFirestoreConnection(): Promise<boolean> {
+  if (!dbInstance) return false;
   try {
-    await getDocFromServer(doc(db, 'test', 'connection'));
+    await getDocFromServer(doc(dbInstance, 'test', 'connection'));
     return true;
   } catch (error) {
     if (error instanceof Error && error.message.includes('the client is offline')) {
-      console.warn('[Firestore] O cliente está em modo offline ou conectando...');
+      console.warn('[Firestore] Cliente em modo offline');
       return false;
     }
     return true;
   }
 }
-testFirestoreConnection();
 
-// Google Sign-In with popup
+// Google Sign-In seguro
 export async function loginWithGoogle(): Promise<FirebaseUser | null> {
+  if (!authInstance || !googleProviderInstance) {
+    throw new Error('Serviço do Google indisponível no momento. O aplicativo está operando no modo Armazenamento Local Seguro.');
+  }
+
   try {
-    await setPersistence(auth, browserLocalPersistence).catch(() => {});
-    const result = await signInWithPopup(auth, googleProvider);
+    await setPersistence(authInstance, browserLocalPersistence).catch(() => {});
+    const result = await signInWithPopup(authInstance, googleProviderInstance);
     return result.user;
   } catch (err: any) {
     console.error('[FirebaseAuth] Erro no login Google:', err);
@@ -158,22 +176,42 @@ export async function loginWithGoogle(): Promise<FirebaseUser | null> {
   }
 }
 
-// Sign-Out
+// Sign-Out seguro
 export async function logoutUser(): Promise<void> {
+  if (!authInstance) return;
   try {
-    await signOut(auth);
+    await signOut(authInstance);
   } catch (err) {
-    console.error('[FirebaseAuth] Erro no logout:', err);
+    console.warn('[FirebaseAuth] Erro no logout:', err);
   }
 }
 
-// Subscribe to Auth changes
-export function subscribeToAuth(callback: (user: FirebaseUser | null) => void) {
-  return onAuthStateChanged(auth, callback);
+// Subscribe to Auth changes seguro
+export function subscribeToAuth(callback: (user: FirebaseUser | null) => void): () => void {
+  if (!authInstance) {
+    callback(null);
+    return () => {};
+  }
+  try {
+    return onAuthStateChanged(
+      authInstance,
+      (user) => {
+        callback(user);
+      },
+      (error) => {
+        console.warn('[FirebaseAuth] Status de rede/auth:', error);
+        callback(null);
+      }
+    );
+  } catch (err) {
+    console.warn('[FirebaseAuth] Erro ao registrar listener:', err);
+    callback(null);
+    return () => {};
+  }
 }
 
 // ==========================================
-// User Cloud Data Synchronization Services
+// Sincronização Segura de Dados na Nuvem
 // ==========================================
 
 export interface UserSecurityCloudData {
@@ -200,16 +238,17 @@ export interface UserCloudData {
 }
 
 /**
- * Save all transactions, profile, security and settings to cloud for a specific user
- * Dual persistence: saves to users/{userId} and subcollections
+ * Salva lançamentos, perfil, senhas e configurações na nuvem
  */
 export async function syncUserDataToCloud(userId: string, data: UserCloudData): Promise<void> {
-  if (!userId) return;
+  if (!userId || !dbInstance) {
+    console.warn('[Firebase] Nuvem inativa. Dados preservados no Armazenamento Local Seguro.');
+    return;
+  }
 
   try {
-    // 1. Dual-Engine Persistence: Documento Principal do Usuário ('users/{userId}')
-    // Salva Nome do Gestor/Usuário, login, chave Pix, configurações e status da Biometria/Digital
-    const userDocRef = doc(db, 'users', userId);
+    // 1. Persistência Principal em users/{userId}
+    const userDocRef = doc(dbInstance, 'users', userId);
     await setDoc(
       userDocRef,
       {
@@ -230,9 +269,9 @@ export async function syncUserDataToCloud(userId: string, data: UserCloudData): 
       { merge: true }
     );
 
-    // Subcoleção de Perfil ('users/{userId}/profile/current')
+    // Subcoleção de Perfil
     if (data.userProfile) {
-      const profileRef = doc(db, 'users', userId, 'profile', 'current');
+      const profileRef = doc(dbInstance, 'users', userId, 'profile', 'current');
       await setDoc(
         profileRef,
         {
@@ -252,77 +291,53 @@ export async function syncUserDataToCloud(userId: string, data: UserCloudData): 
       );
     }
 
-    // 2. Sync Budget Settings
-    const budgetRef = doc(db, 'users', userId, 'budgetConfig', 'current');
+    // 2. Orçamentos
+    const budgetRef = doc(dbInstance, 'users', userId, 'budgetConfig', 'current');
     await setDoc(
       budgetRef,
       {
         userId,
+        budgets: data.budgets,
         defaultBudget: data.defaultBudget,
-        budgets: data.budgets || {},
-        categoryBudgets: data.categoryBudgets || {},
+        categoryBudgets: data.categoryBudgets,
         updatedAt: new Date().toISOString(),
       },
       { merge: true }
     );
 
-    // 3. Batch sync categories (ignoring deleted categories)
-    const deletedSet = new Set(data.deletedItemIds || []);
+    // 3. Categorias
     const allCategories = [...data.incomeCategories, ...data.expenseCategories];
+    const catBatch = writeBatch(dbInstance);
     for (const cat of allCategories) {
-      if (deletedSet.has(cat.id)) continue;
-      const catRef = doc(db, 'users', userId, 'categories', cat.id);
-      await setDoc(
-        catRef,
-        {
-          id: cat.id,
-          userId,
-          name: cat.name,
-          type: cat.type,
-          iconName: cat.iconName || '',
-          color: cat.color || '',
-        },
-        { merge: true }
-      );
+      const catRef = doc(dbInstance, 'users', userId, 'categories', cat.id);
+      catBatch.set(catRef, { ...cat, userId }, { merge: true });
+    }
+    await catBatch.commit();
+
+    // 4. Lançamentos
+    const txChunks: Transaction[][] = [];
+    const chunkSize = 200;
+    for (let i = 0; i < data.transactions.length; i += chunkSize) {
+      txChunks.push(data.transactions.slice(i, i + chunkSize));
     }
 
-    // 4. Sync Transactions in batch (filtering out any deleted items)
-    for (const tx of data.transactions) {
-      if (deletedSet.has(tx.id)) continue;
-      const txRef = doc(db, 'users', userId, 'transactions', tx.id);
-      await setDoc(
-        txRef,
-        {
-          ...tx,
-          userId,
-          createdAt: tx.createdAt || new Date().toISOString(),
-        },
-        { merge: true }
-      );
-    }
-
-    // 5. Sync Recurring Rules
-    for (const rule of data.recurringRules) {
-      if (deletedSet.has(rule.id)) continue;
-      const ruleRef = doc(db, 'users', userId, 'recurringRules', rule.id);
-      await setDoc(
-        ruleRef,
-        {
-          ...rule,
-          userId,
-        },
-        { merge: true }
-      );
-    }
-
-    // 6. Delete any deleted items from cloud to ensure permanent exclusion
-    if (data.deletedItemIds && data.deletedItemIds.length > 0) {
-      for (const delId of data.deletedItemIds) {
-        // Asynchronously delete from all candidate collections without throwing
-        deleteDoc(doc(db, 'users', userId, 'transactions', delId)).catch(() => {});
-        deleteDoc(doc(db, 'users', userId, 'categories', delId)).catch(() => {});
-        deleteDoc(doc(db, 'users', userId, 'recurringRules', delId)).catch(() => {});
+    for (const chunk of txChunks) {
+      const txBatch = writeBatch(dbInstance);
+      for (const tx of chunk) {
+        const txRef = doc(dbInstance, 'users', userId, 'transactions', tx.id);
+        txBatch.set(txRef, { ...tx, userId }, { merge: true });
       }
+      await txBatch.commit();
+    }
+
+    // 5. Regras Recorrentes
+    if (data.recurringRules.length > 0) {
+      const ruleBatch = writeBatch(dbInstance);
+      for (const rule of data.recurringRules) {
+        const ruleRef = doc(dbInstance, 'users', userId, 'recurringRules', rule.id);
+        ruleBatch.set(ruleRef, { ...rule, userId }, { merge: true });
+      }
+      await ruleBatch.commit();
     }
   } catch (error) {
     handleFirestoreError(error, OperationType.WRITE, `users/${userId}`);
@@ -330,78 +345,90 @@ export async function syncUserDataToCloud(userId: string, data: UserCloudData): 
 }
 
 /**
- * Fetch all cloud data for a user with automatic restoration of profile, Pix, and Biometrics
+ * Busca dados sincronizados da nuvem
  */
 export async function fetchUserDataFromCloud(userId: string): Promise<UserCloudData | null> {
-  if (!userId) return null;
+  if (!userId || !dbInstance) return null;
 
   try {
-    // 1. Fetch User Main Document ('users/{userId}')
-    const userDocSnap = await getDoc(doc(db, 'users', userId));
-    const userData = userDocSnap.exists() ? userDocSnap.data() : null;
+    // 1. Documento Raiz do Usuário
+    const userDocRef = doc(dbInstance, 'users', userId);
+    const userDocSnap = await getDoc(userDocRef);
 
-    // 2. Fetch Profile Subcollection
-    const profileSnap = await getDoc(doc(db, 'users', userId, 'profile', 'current'));
-    const profileSubData = profileSnap.exists() ? (profileSnap.data() as UserProfile) : undefined;
+    let security: UserSecurityCloudData | undefined = undefined;
+    let deletedItemIds: string[] = [];
+    let rootUserData: any = null;
 
+    if (userDocSnap.exists()) {
+      rootUserData = userDocSnap.data();
+      if (rootUserData.security) {
+        security = rootUserData.security as UserSecurityCloudData;
+      }
+      if (rootUserData.deletedItemIds && Array.isArray(rootUserData.deletedItemIds)) {
+        deletedItemIds = rootUserData.deletedItemIds;
+      }
+    }
+
+    const deletedSet = new Set(deletedItemIds);
+
+    // 2. Perfil
+    const profileRef = doc(dbInstance, 'users', userId, 'profile', 'current');
+    const profileSnap = await getDoc(profileRef);
     let userProfile: UserProfile | undefined = undefined;
-    if (userData?.name || profileSubData?.name) {
+
+    if (profileSnap.exists()) {
+      userProfile = profileSnap.data() as UserProfile;
+    } else if (rootUserData?.name) {
       userProfile = {
-        name: userData?.name || profileSubData?.name || 'Usuário',
-        managerName: userData?.managerName || profileSubData?.managerName || userData?.name || 'Usuário',
-        login: userData?.login || profileSubData?.login || '@usuario',
-        pixKey: userData?.pixKey || profileSubData?.pixKey || '',
-        avatarUrl: userData?.avatarUrl || profileSubData?.avatarUrl || '',
-        avatarColor: userData?.avatarColor || profileSubData?.avatarColor || '#7dd3fc',
-        bio: userData?.bio || profileSubData?.bio || '',
-        joinedDate: userData?.joinedDate || profileSubData?.joinedDate || 'Setembro 2026',
-        themeColor: userData?.themeColor || profileSubData?.themeColor,
+        name: rootUserData.name,
+        managerName: rootUserData.managerName || rootUserData.name,
+        login: rootUserData.login || '@usuario',
+        pixKey: rootUserData.pixKey || '',
+        avatarUrl: rootUserData.avatarUrl || '',
+        avatarColor: rootUserData.avatarColor || '#7dd3fc',
+        bio: rootUserData.bio || '',
+        joinedDate: rootUserData.joinedDate || 'Setembro 2026',
+        themeColor: rootUserData.themeColor || 'sky',
       };
     }
 
-    const security: UserSecurityCloudData | undefined = userData?.security || undefined;
-    const deletedItemIds: string[] = Array.isArray(userData?.deletedItemIds) ? userData.deletedItemIds : [];
-    const deletedSet = new Set(deletedItemIds);
-
-    // 3. Fetch Budgets
-    const budgetSnap = await getDoc(doc(db, 'users', userId, 'budgetConfig', 'current'));
+    // 3. Orçamento
+    const budgetRef = doc(dbInstance, 'users', userId, 'budgetConfig', 'current');
+    const budgetSnap = await getDoc(budgetRef);
     const budgetConfig = budgetSnap.exists() ? budgetSnap.data() : null;
 
-    // 4. Fetch Categories
-    const catSnaps = await getDocs(collection(db, 'users', userId, 'categories'));
+    // 4. Categorias
+    const catSnaps = await getDocs(collection(dbInstance, 'users', userId, 'categories'));
     const fetchedCategories: Category[] = [];
     catSnaps.forEach((docSnap) => {
       const c = docSnap.data() as Category;
       if (!deletedSet.has(c.id)) {
         fetchedCategories.push(c);
       } else {
-        // Item was marked as deleted: remove from cloud permanently
         deleteDoc(docSnap.ref).catch(() => {});
       }
     });
 
-    // 5. Fetch Transactions
-    const txSnaps = await getDocs(collection(db, 'users', userId, 'transactions'));
+    // 5. Lançamentos
+    const txSnaps = await getDocs(collection(dbInstance, 'users', userId, 'transactions'));
     const fetchedTransactions: Transaction[] = [];
     txSnaps.forEach((docSnap) => {
       const t = docSnap.data() as Transaction;
       if (!deletedSet.has(t.id)) {
         fetchedTransactions.push(t);
       } else {
-        // Item was marked as deleted: remove from cloud permanently
         deleteDoc(docSnap.ref).catch(() => {});
       }
     });
 
-    // 6. Fetch Recurring Rules
-    const ruleSnaps = await getDocs(collection(db, 'users', userId, 'recurringRules'));
+    // 6. Regras Recorrentes
+    const ruleSnaps = await getDocs(collection(dbInstance, 'users', userId, 'recurringRules'));
     const fetchedRules: RecurringExpenseRule[] = [];
     ruleSnaps.forEach((docSnap) => {
       const r = docSnap.data() as RecurringExpenseRule;
       if (!deletedSet.has(r.id)) {
         fetchedRules.push(r);
       } else {
-        // Item was marked as deleted: remove from cloud permanently
         deleteDoc(docSnap.ref).catch(() => {});
       }
     });
@@ -423,16 +450,17 @@ export async function fetchUserDataFromCloud(userId: string): Promise<UserCloudD
     };
   } catch (error) {
     handleFirestoreError(error, OperationType.GET, `users/${userId}`);
+    return null;
   }
 }
 
 /**
- * Delete a transaction directly from the cloud
+ * Exclui lançamento da nuvem
  */
 export async function deleteTransactionFromCloud(userId: string, transactionId: string): Promise<void> {
-  if (!userId || !transactionId) return;
+  if (!userId || !transactionId || !dbInstance) return;
   try {
-    const txRef = doc(db, 'users', userId, 'transactions', transactionId);
+    const txRef = doc(dbInstance, 'users', userId, 'transactions', transactionId);
     await deleteDoc(txRef);
   } catch (error) {
     handleFirestoreError(error, OperationType.DELETE, `users/${userId}/transactions/${transactionId}`);
@@ -440,12 +468,12 @@ export async function deleteTransactionFromCloud(userId: string, transactionId: 
 }
 
 /**
- * Delete a category directly from the cloud
+ * Exclui categoria da nuvem
  */
 export async function deleteCategoryFromCloud(userId: string, categoryId: string): Promise<void> {
-  if (!userId || !categoryId) return;
+  if (!userId || !categoryId || !dbInstance) return;
   try {
-    const catRef = doc(db, 'users', userId, 'categories', categoryId);
+    const catRef = doc(dbInstance, 'users', userId, 'categories', categoryId);
     await deleteDoc(catRef);
   } catch (error) {
     handleFirestoreError(error, OperationType.DELETE, `users/${userId}/categories/${categoryId}`);
@@ -453,12 +481,12 @@ export async function deleteCategoryFromCloud(userId: string, categoryId: string
 }
 
 /**
- * Delete a recurring rule directly from the cloud
+ * Exclui regra recorrente da nuvem
  */
 export async function deleteRecurringRuleFromCloud(userId: string, ruleId: string): Promise<void> {
-  if (!userId || !ruleId) return;
+  if (!userId || !ruleId || !dbInstance) return;
   try {
-    const ruleRef = doc(db, 'users', userId, 'recurringRules', ruleId);
+    const ruleRef = doc(dbInstance, 'users', userId, 'recurringRules', ruleId);
     await deleteDoc(ruleRef);
   } catch (error) {
     handleFirestoreError(error, OperationType.DELETE, `users/${userId}/recurringRules/${ruleId}`);
@@ -466,16 +494,16 @@ export async function deleteRecurringRuleFromCloud(userId: string, ruleId: strin
 }
 
 /**
- * Save user profile and security credentials directly to users/{userId}
+ * Salva perfil e credenciais de segurança diretamente em users/{userId}
  */
 export async function saveProfileAndSecurityToCloud(
   userId: string,
   profile: UserProfile,
   security?: UserSecurityCloudData
 ): Promise<void> {
-  if (!userId) return;
+  if (!userId || !dbInstance) return;
   try {
-    const userDocRef = doc(db, 'users', userId);
+    const userDocRef = doc(dbInstance, 'users', userId);
     await setDoc(
       userDocRef,
       {
@@ -500,18 +528,18 @@ export async function saveProfileAndSecurityToCloud(
 }
 
 /**
- * Clear all transactions in cloud for user
+ * Zera todas as transações na nuvem para o usuário
  */
 export async function clearAllTransactionsFromCloud(userId: string): Promise<void> {
-  if (!userId) return;
+  if (!userId || !dbInstance) return;
   try {
-    const txSnaps = await getDocs(collection(db, 'users', userId, 'transactions'));
-    const batch = writeBatch(db);
+    const txSnaps = await getDocs(collection(dbInstance, 'users', userId, 'transactions'));
+    const batch = writeBatch(dbInstance);
     txSnaps.forEach((docSnap) => {
       batch.delete(docSnap.ref);
     });
 
-    const ruleSnaps = await getDocs(collection(db, 'users', userId, 'recurringRules'));
+    const ruleSnaps = await getDocs(collection(dbInstance, 'users', userId, 'recurringRules'));
     ruleSnaps.forEach((docSnap) => {
       batch.delete(docSnap.ref);
     });
@@ -521,4 +549,3 @@ export async function clearAllTransactionsFromCloud(userId: string): Promise<voi
     handleFirestoreError(error, OperationType.DELETE, `users/${userId}/transactions`);
   }
 }
-

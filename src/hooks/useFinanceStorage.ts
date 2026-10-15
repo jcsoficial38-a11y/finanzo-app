@@ -218,11 +218,11 @@ export function useFinanceStorage() {
   });
 
   // Firebase Authentication & Cloud Database Sync State
-  const [authUser, setAuthUser] = useState<FirebaseUser | null>(() => auth.currentUser);
+  const [authUser, setAuthUser] = useState<FirebaseUser | null>(() => auth?.currentUser || null);
   const [cloudSyncState, setCloudSyncState] = useState<'idle' | 'syncing' | 'synced' | 'error'>(() =>
-    auth.currentUser ? 'synced' : 'idle'
+    auth?.currentUser ? 'synced' : 'idle'
   );
-  const [lastSyncTime, setLastSyncTime] = useState<Date | null>(() => (auth.currentUser ? new Date() : null));
+  const [lastSyncTime, setLastSyncTime] = useState<Date | null>(() => (auth?.currentUser ? new Date() : null));
 
   // Observador onAuthStateChanged para verificar e reconectar automaticamente se já existe um usuário logado
   // SALVAMENTO AUTOMÁTICO NO LOCALSTORAGE:
@@ -768,7 +768,7 @@ export function useFinanceStorage() {
     markHasRealUserData();
     addDeletedItemIds(categoryId);
 
-    const uid = authUser?.uid || auth.currentUser?.uid;
+    const uid = authUser?.uid || auth?.currentUser?.uid;
     if (uid) {
       deleteCategoryFromCloud(uid, categoryId).catch(() => {});
     }
@@ -804,7 +804,7 @@ export function useFinanceStorage() {
       }
 
       // Dual persistence: save immediately to Firestore users/{userId} if user is logged in
-      const uid = authUser?.uid || auth.currentUser?.uid;
+      const uid = authUser?.uid || auth?.currentUser?.uid;
       if (uid) {
         const pinData = getStoredPinData();
         const bioData = getStoredBiometricData();
@@ -1026,7 +1026,7 @@ export function useFinanceStorage() {
     ) => {
       markHasRealUserData();
       const { deleteAllInstallments = false, deleteRecurringMode = 'single' } = options || {};
-      const uid = authUser?.uid || auth.currentUser?.uid;
+      const uid = authUser?.uid || auth?.currentUser?.uid;
 
       setTransactions((prev) => {
         const target = prev.find((t) => t.id === transactionId);
@@ -1149,7 +1149,7 @@ export function useFinanceStorage() {
     });
 
     // 5. Clear from cloud if logged in
-    const uid = authUser?.uid || auth.currentUser?.uid;
+    const uid = authUser?.uid || auth?.currentUser?.uid;
     if (uid) {
       clearAllTransactionsFromCloud(uid).catch(() => {});
     }
@@ -1157,7 +1157,7 @@ export function useFinanceStorage() {
 
   // Manual Trigger to sync immediately with Cloud
   const syncNow = useCallback(async (targetUserId?: string) => {
-    const uid = targetUserId || authUser?.uid || auth.currentUser?.uid;
+    const uid = targetUserId || authUser?.uid || auth?.currentUser?.uid;
     if (!uid) {
       return loginWithGoogle();
     }

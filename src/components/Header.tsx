@@ -51,11 +51,35 @@ export const Header: React.FC<HeaderProps> = ({
     return fullName.slice(0, 2).toUpperCase() || 'FP';
   };
 
-  // Exibição Imediata ao abrir o app: verifica o localStorage antes mesmo do restante do app
-  const savedName = typeof window !== 'undefined' ? localStorage.getItem('userName') : null;
-  const savedPhoto = typeof window !== 'undefined' ? localStorage.getItem('userPhoto') : null;
-  const displayName = profile.name && profile.name !== 'Usuário' ? profile.name : (savedName || profile.name || 'Usuário');
-  const displayPhoto = profile.avatarUrl || savedPhoto || '';
+  // 3. PERFIL E FOTO SEGUROS:
+  // Recupera a foto e o nome do perfil do 'localStorage' após o carregamento seguro da página
+  const [isMounted, setIsMounted] = useState(false);
+  const [cachedName, setCachedName] = useState<string | null>(null);
+  const [cachedPhoto, setCachedPhoto] = useState<string | null>(null);
+  const [imgFailed, setImgFailed] = useState(false);
+
+  React.useEffect(() => {
+    setIsMounted(true);
+    try {
+      if (typeof window !== 'undefined' && window.localStorage) {
+        const storedName = localStorage.getItem('userName');
+        const storedPhoto = localStorage.getItem('userPhoto');
+        if (storedName) setCachedName(storedName);
+        if (storedPhoto) setCachedPhoto(storedPhoto);
+      }
+    } catch (e) {
+      console.warn('[Finanzo Header] Leitura segura do localStorage:', e);
+    }
+  }, []);
+
+  const displayName =
+    profile.name && profile.name !== 'Usuário'
+      ? profile.name
+      : cachedName || profile.name || 'Usuário';
+
+  const displayPhoto = !imgFailed
+    ? profile.avatarUrl || cachedPhoto || ''
+    : '';
 
   return (
     <>
@@ -125,6 +149,7 @@ export const Header: React.FC<HeaderProps> = ({
                       alt={displayName}
                       className="w-full h-full object-cover"
                       referrerPolicy="no-referrer"
+                      onError={() => setImgFailed(true)}
                     />
                   ) : (
                     <span className="text-[10px] font-bold text-slate-800">
