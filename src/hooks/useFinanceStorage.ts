@@ -157,14 +157,41 @@ export function useFinanceStorage() {
     };
   });
 
-  // User Profile
+  // User Profile - Exibição Imediata ao abrir o App verificando 'userName' e 'userPhoto' no localStorage
   const [userProfile, setUserProfile] = useState<UserProfile>(() => {
+    let savedName = '';
+    let savedPhoto = '';
+    if (typeof window !== 'undefined') {
+      savedName = localStorage.getItem('userName') || '';
+      savedPhoto = localStorage.getItem('userPhoto') || '';
+    }
+
     const stored = safeGetLocalStorage<UserProfile | null>(PERSISTENT_STORAGE_KEYS.USER_PROFILE, null);
     if (stored && typeof stored === 'object' && stored.name) {
-      return stored;
+      return {
+        ...stored,
+        name: savedName || stored.name,
+        managerName: stored.managerName || savedName || stored.name,
+        avatarUrl: savedPhoto || stored.avatarUrl || '',
+      };
     }
     const backup = getMasterSnapshot();
-    if (backup?.userProfile?.name) return backup.userProfile;
+    if (backup?.userProfile?.name) {
+      return {
+        ...backup.userProfile,
+        name: savedName || backup.userProfile.name,
+        managerName: backup.userProfile.managerName || savedName || backup.userProfile.name,
+        avatarUrl: savedPhoto || backup.userProfile.avatarUrl || '',
+      };
+    }
+    if (savedName || savedPhoto) {
+      return {
+        ...DEFAULT_USER_PROFILE,
+        name: savedName || DEFAULT_USER_PROFILE.name,
+        managerName: savedName || DEFAULT_USER_PROFILE.managerName,
+        avatarUrl: savedPhoto || '',
+      };
+    }
     return DEFAULT_USER_PROFILE;
   });
 
@@ -198,11 +225,43 @@ export function useFinanceStorage() {
   const [lastSyncTime, setLastSyncTime] = useState<Date | null>(() => (auth.currentUser ? new Date() : null));
 
   // Observador onAuthStateChanged para verificar e reconectar automaticamente se já existe um usuário logado
+  // SALVAMENTO AUTOMÁTICO NO LOCALSTORAGE:
+  // Assim que detectar o usuário logado do Google, pega user.displayName e user.photoURL e salva no localStorage
   useEffect(() => {
     const unsubscribe = subscribeToAuth((user) => {
       setAuthUser(user);
       if (user) {
         setCloudSyncState('synced');
+
+        const gName = user.displayName;
+        const gPhoto = user.photoURL;
+
+        if (gName) {
+          localStorage.setItem('userName', gName);
+        }
+        if (gPhoto) {
+          localStorage.setItem('userPhoto', gPhoto);
+        }
+
+        setUserProfile((prev) => {
+          const finalName = (prev.name && prev.name !== 'Usuário') ? prev.name : (gName || prev.name);
+          const finalPhoto = prev.avatarUrl ? prev.avatarUrl : (gPhoto || prev.avatarUrl);
+          const finalLogin = user.email || prev.login;
+
+          const updatedProfile: UserProfile = {
+            ...prev,
+            name: finalName,
+            managerName: prev.managerName || finalName,
+            avatarUrl: finalPhoto,
+            login: finalLogin,
+          };
+
+          safeSetLocalStorage(PERSISTENT_STORAGE_KEYS.USER_PROFILE, updatedProfile);
+          if (finalName && finalName !== 'Usuário') localStorage.setItem('userName', finalName);
+          if (finalPhoto) localStorage.setItem('userPhoto', finalPhoto);
+
+          return updatedProfile;
+        });
       }
     });
     return () => unsubscribe();
@@ -283,6 +342,12 @@ export function useFinanceStorage() {
 
   useEffect(() => {
     safeSetLocalStorage(PERSISTENT_STORAGE_KEYS.USER_PROFILE, userProfile);
+    if (userProfile.name && userProfile.name !== 'Usuário') {
+      localStorage.setItem('userName', userProfile.name);
+    }
+    if (userProfile.avatarUrl) {
+      localStorage.setItem('userPhoto', userProfile.avatarUrl);
+    }
   }, [userProfile]);
 
   useEffect(() => {
@@ -327,8 +392,24 @@ export function useFinanceStorage() {
         if (cloudData) {
           // 1. Dual Persistence: Restore User Profile & Settings
           if (cloudData.userProfile?.name) {
-            setUserProfile(cloudData.userProfile);
-            safeSetLocalStorage(PERSISTENT_STORAGE_KEYS.USER_PROFILE, cloudData.userProfile);
+            const savedName = localStorage.getItem('userName');
+            const savedPhoto = localStorage.getItem('userPhoto');
+
+            const restoredProfile: UserProfile = {
+              ...cloudData.userProfile,
+              name: cloudData.userProfile.name || savedName || 'Usuário',
+              managerName: cloudData.userProfile.managerName || cloudData.userProfile.name || savedName || 'Usuário',
+              avatarUrl: cloudData.userProfile.avatarUrl || savedPhoto || '',
+            };
+
+            setUserProfile(restoredProfile);
+            safeSetLocalStorage(PERSISTENT_STORAGE_KEYS.USER_PROFILE, restoredProfile);
+            if (restoredProfile.name && restoredProfile.name !== 'Usuário') {
+              localStorage.setItem('userName', restoredProfile.name);
+            }
+            if (restoredProfile.avatarUrl) {
+              localStorage.setItem('userPhoto', restoredProfile.avatarUrl);
+            }
           }
 
           // 2. Dual Persistence: Restore PIN & Biometrics
@@ -715,6 +796,12 @@ export function useFinanceStorage() {
         ...updates,
       };
       safeSetLocalStorage(PERSISTENT_STORAGE_KEYS.USER_PROFILE, next);
+      if (next.name && next.name !== 'Usuário') {
+        localStorage.setItem('userName', next.name);
+      }
+      if (next.avatarUrl) {
+        localStorage.setItem('userPhoto', next.avatarUrl);
+      }
 
       // Dual persistence: save immediately to Firestore users/{userId} if user is logged in
       const uid = authUser?.uid || auth.currentUser?.uid;
@@ -1076,15 +1163,30 @@ export function useFinanceStorage() {
     }
     setCloudSyncState('syncing');
     try {
+      const pinData = getStoredPinData();
+      const bioData = getStoredBiometricData();
+      const deletedItemIds = getDeletedItemIds();
+      const deletedSet = new Set(deletedItemIds);
+
       await syncUserDataToCloud(uid, {
-        transactions,
-        incomeCategories,
-        expenseCategories,
+        transactions: transactions.filter((t) => !deletedSet.has(t.id)),
+        incomeCategories: incomeCategories.filter((c) => !deletedSet.has(c.id)),
+        expenseCategories: expenseCategories.filter((c) => !deletedSet.has(c.id)),
         budgets,
         defaultBudget,
         categoryBudgets,
         userProfile,
-        recurringRules,
+        recurringRules: recurringRules.filter((r) => !deletedSet.has(r.id)),
+        deletedItemIds,
+        security: {
+          pin: pinData.pin,
+          pinEnabled: pinData.isEnabled,
+          biometricEnabled: bioData.isEnabled,
+          biometricRegistered: bioData.isRegistered,
+          biometricType: bioData.type,
+          biometricDate: bioData.registeredDate,
+          biometricCredentialId: bioData.keyId,
+        },
       });
       setCloudSyncState('synced');
       setLastSyncTime(new Date());

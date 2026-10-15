@@ -51,6 +51,12 @@ export const Header: React.FC<HeaderProps> = ({
     return fullName.slice(0, 2).toUpperCase() || 'FP';
   };
 
+  // Exibição Imediata ao abrir o app: verifica o localStorage antes mesmo do restante do app
+  const savedName = typeof window !== 'undefined' ? localStorage.getItem('userName') : null;
+  const savedPhoto = typeof window !== 'undefined' ? localStorage.getItem('userPhoto') : null;
+  const displayName = profile.name && profile.name !== 'Usuário' ? profile.name : (savedName || profile.name || 'Usuário');
+  const displayPhoto = profile.avatarUrl || savedPhoto || '';
+
   return (
     <>
       <header className="sticky top-0 z-30 bg-white/95 backdrop-blur-md border-b border-slate-100/80 px-4 pt-safe pb-2">
@@ -102,25 +108,33 @@ export const Header: React.FC<HeaderProps> = ({
               <span className="hidden xs:inline">Orçamento</span>
             </button>
 
-            {/* Profile Avatar Trigger Button */}
+            {/* Profile Avatar & Name Trigger Button */}
             <div className="relative">
               <button
                 onClick={onOpenProfileModal}
-                title={`Perfil: ${profile.name} (${profile.login})${isCloudConnected ? ' • Sincronizado na Nuvem' : ''}`}
-                className="w-8 h-8 rounded-full flex items-center justify-center overflow-hidden border border-slate-200 hover:border-slate-400 transition-all shadow-2xs active:scale-95"
-                style={{ backgroundColor: profile.avatarUrl ? 'transparent' : profile.avatarColor || '#7dd3fc' }}
+                title={`Perfil: ${displayName} (${profile.login})${isCloudConnected ? ' • Sincronizado na Nuvem' : ''}`}
+                className="flex items-center gap-1.5 pl-0.5 pr-2 py-0.5 rounded-full border border-slate-200/90 hover:border-slate-300 bg-white hover:bg-slate-50 transition-all shadow-2xs active:scale-95 cursor-pointer max-w-[130px] sm:max-w-[180px]"
               >
-                {profile.avatarUrl ? (
-                  <img
-                    src={profile.avatarUrl}
-                    alt={profile.name}
-                    className="w-full h-full object-cover"
-                  />
-                ) : (
-                  <span className="text-[11px] font-bold text-slate-800">
-                    {getInitials(profile.name)}
-                  </span>
-                )}
+                <div
+                  className="w-7 h-7 rounded-full flex items-center justify-center overflow-hidden shrink-0 border border-slate-100"
+                  style={{ backgroundColor: displayPhoto ? 'transparent' : profile.avatarColor || '#7dd3fc' }}
+                >
+                  {displayPhoto ? (
+                    <img
+                      src={displayPhoto}
+                      alt={displayName}
+                      className="w-full h-full object-cover"
+                      referrerPolicy="no-referrer"
+                    />
+                  ) : (
+                    <span className="text-[10px] font-bold text-slate-800">
+                      {getInitials(displayName)}
+                    </span>
+                  )}
+                </div>
+                <span className="text-xs font-semibold text-slate-700 truncate tracking-tight">
+                  {displayName}
+                </span>
               </button>
               {isCloudConnected && (
                 <span
