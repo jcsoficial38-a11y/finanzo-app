@@ -183,14 +183,19 @@ export function useFinanceStorage() {
   });
 
   // Firebase Authentication & Cloud Database Sync State
-  const [authUser, setAuthUser] = useState<FirebaseUser | null>(null);
-  const [cloudSyncState, setCloudSyncState] = useState<'idle' | 'syncing' | 'synced' | 'error'>('idle');
-  const [lastSyncTime, setLastSyncTime] = useState<Date | null>(null);
+  const [authUser, setAuthUser] = useState<FirebaseUser | null>(() => auth.currentUser);
+  const [cloudSyncState, setCloudSyncState] = useState<'idle' | 'syncing' | 'synced' | 'error'>(() =>
+    auth.currentUser ? 'synced' : 'idle'
+  );
+  const [lastSyncTime, setLastSyncTime] = useState<Date | null>(() => (auth.currentUser ? new Date() : null));
 
-  // Subscribe to Firebase Auth
+  // Observador onAuthStateChanged para verificar e reconectar automaticamente se já existe um usuário logado
   useEffect(() => {
     const unsubscribe = subscribeToAuth((user) => {
       setAuthUser(user);
+      if (user) {
+        setCloudSyncState('synced');
+      }
     });
     return () => unsubscribe();
   }, []);

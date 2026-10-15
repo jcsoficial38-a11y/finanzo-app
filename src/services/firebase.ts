@@ -14,6 +14,8 @@
 import { initializeApp, getApps, getApp } from 'firebase/app';
 import {
   getAuth,
+  setPersistence,
+  browserLocalPersistence,
   GoogleAuthProvider,
   signInWithPopup,
   signOut,
@@ -60,6 +62,12 @@ const databaseId =
     : undefined;
 export const db = databaseId ? getFirestore(app, databaseId) : getFirestore(app);
 export const auth = getAuth(app);
+
+// 1. Configura persistência como LOCAL para garantir que a sessão persista ao fechar e abrir o aplicativo
+setPersistence(auth, browserLocalPersistence).catch((err) => {
+  console.warn('[FirebaseAuth] Não foi possível ativar persistência local:', err);
+});
+
 try {
   auth.useDeviceLanguage();
 } catch {
@@ -141,6 +149,7 @@ testFirestoreConnection();
 // Google Sign-In with popup
 export async function loginWithGoogle(): Promise<FirebaseUser | null> {
   try {
+    await setPersistence(auth, browserLocalPersistence).catch(() => {});
     const result = await signInWithPopup(auth, googleProvider);
     return result.user;
   } catch (err: any) {

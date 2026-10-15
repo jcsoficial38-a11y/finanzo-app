@@ -62,7 +62,7 @@ interface ProfileModalProps {
   cloudSyncState?: 'idle' | 'syncing' | 'synced' | 'error';
   onLoginGoogle?: () => void;
   onLogoutGoogle?: () => void;
-  onSyncNow?: () => void;
+  onSyncNow?: (targetUserId?: string) => void;
 }
 
 export const ProfileModal: React.FC<ProfileModalProps> = ({
@@ -108,21 +108,59 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
   const [showClearConfirmModal, setShowClearConfirmModal] = useState(false);
   const [clearSuccess, setClearSuccess] = useState('');
 
-  // Google Login state
+  // Google Login state & Feedback
   const [isLoggingInGoogle, setIsLoggingInGoogle] = useState(false);
   const [googleAuthError, setGoogleAuthError] = useState('');
+  const [googleAuthSuccess, setGoogleAuthSuccess] = useState('');
 
-  const handleLoginGoogleClick = async () => {
-    if (!onLoginGoogle) return;
+  const handleLoginGoogleClick = async (e?: React.MouseEvent) => {
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
     setIsLoggingInGoogle(true);
     setGoogleAuthError('');
+    setGoogleAuthSuccess('');
+
     try {
-      await onLoginGoogle();
-    } catch (err: any) {
-      if (err?.code !== 'auth/popup-closed-by-user' && err?.code !== 'auth/cancelled-popup-request') {
-        console.error('[GoogleAuth] Erro na autenticação:', err);
-        setGoogleAuthError(err?.message || 'Falha ao autenticar com o Google.');
+      const authInstance = auth || getAuth();
+      const provider = googleProvider || new GoogleAuthProvider();
+      provider.setCustomParameters({ prompt: 'select_account' });
+
+      // Dispara o login via signInWithPopup usando o provedor do Google
+      const result = await signInWithPopup(authInstance, provider);
+      const user = result?.user;
+
+      if (user) {
+        setGoogleAuthSuccess(`Conectado como ${user.displayName || user.email}! Sincronizado Online.`);
+        if (onSyncNow) {
+          await onSyncNow(user.uid);
+        }
+        setTimeout(() => setGoogleAuthSuccess(''), 5000);
       }
+    } catch (err: any) {
+      console.error('[Firebase Auth] Erro ao conectar com o Google:', err);
+      let friendlyMessage = 'Ocorreu uma falha ao conectar com o Google. Tente novamente.';
+
+      if (err?.code === 'auth/popup-blocked') {
+        friendlyMessage = 'A janela de login foi bloqueada pelo navegador. Permita pop-ups para este site e clique novamente.';
+      } else if (err?.code === 'auth/popup-closed-by-user') {
+        friendlyMessage = 'A janela de login do Google foi fechada antes de concluir a autenticação.';
+      } else if (err?.code === 'auth/cancelled-popup-request') {
+        friendlyMessage = 'Solicitação de login cancelada. Tente novamente.';
+      } else if (err?.code === 'auth/unauthorized-domain') {
+        friendlyMessage = 'Domínio atual não autorizado no Firebase Console. Adicione este domínio em Authentication > Settings > Authorized Domains no painel do Firebase.';
+      } else if (err?.code === 'auth/operation-not-allowed') {
+        friendlyMessage = 'O provedor Google ainda não foi ativado no Firebase Authentication. Ative-o no console do Firebase.';
+      } else if (err?.code === 'auth/invalid-api-key' || err?.code === 'auth/api-key-not-valid') {
+        friendlyMessage = 'Chave de API do Firebase inválida. Verifique suas credenciais em firebaseConfig.';
+      } else if (err?.code === 'auth/network-request-failed') {
+        friendlyMessage = 'Erro de rede ao conectar com os servidores do Google. Verifique sua conexão com a internet.';
+      } else if (err?.message) {
+        friendlyMessage = `Erro: ${err.message}`;
+      }
+
+      setGoogleAuthError(friendlyMessage);
     } finally {
       setIsLoggingInGoogle(false);
     }
@@ -839,7 +877,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
                     <span>
                       {cloudSyncState === 'syncing'
                         ? 'Sincronizando...'
-                        : 'Firestore Conectado'}
+                        : 'Sincronizado Online'}
                     </span>
                   </span>
                 </div>
@@ -847,7 +885,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
                 <div className="flex items-center gap-2">
                   <button
                     type="button"
-                    onClick={onSyncNow}
+                    onClick={() => onSyncNow?.()}
                     disabled={cloudSyncState === 'syncing'}
                     className="flex-1 py-2 px-3 bg-white hover:bg-sky-100/70 active:bg-sky-100 border border-sky-200 text-sky-800 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-colors shadow-2xs"
                   >
@@ -879,7 +917,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
                   type="button"
                   onClick={handleLoginGoogleClick}
                   disabled={isLoggingInGoogle}
-                  className="w-full py-2.5 px-3 bg-sky-600 hover:bg-sky-700 active:scale-98 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all shadow-xs disabled:opacity-75 disabled:cursor-not-allowed"
+                  className="w-full py-2.5 px-3 bg-sky-600 hover:bg-sky-700 active:scale-98 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all shadow-xs disabled:opacity-75 disabled:cursor-not-allowed cursor-pointer"
                 >
                   {isLoggingInGoogle ? (
                     <>
@@ -894,9 +932,15 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
                   )}
                 </button>
                 {googleAuthError ? (
-                  <p className="text-[11px] text-rose-600 font-medium text-center">
-                    {googleAuthError}
-                  </p>
+                  <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-rose-700 text-xs flex items-start gap-2 animate-in fade-in">
+                    <AlertCircle className="w-4 h-4 text-rose-500 shrink-0 mt-0.5" />
+                    <span className="leading-tight">{googleAuthError}</span>
+                  </div>
+                ) : googleAuthSuccess ? (
+                  <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-emerald-800 text-xs flex items-start gap-2 animate-in fade-in">
+                    <Check className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                    <span className="leading-tight">{googleAuthSuccess}</span>
+                  </div>
                 ) : (
                   <p className="text-[10px] text-sky-800/80 text-center">
                     Todos os lançamentos locais serão salvos com segurança no Firebase Firestore.
