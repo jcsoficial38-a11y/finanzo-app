@@ -8,14 +8,6 @@ service cloud.firestore {
     }
 
     // Helper functions
-    function isValidId(id) {
-      return id is string && id.size() > 0 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
-    }
-
-    function incoming() {
-      return request.resource.data;
-    }
-
     function isSignedIn() {
       return request.auth != null;
     }
@@ -24,47 +16,40 @@ service cloud.firestore {
       return isSignedIn() && request.auth.uid == userId;
     }
 
-    // User-scoped collections
+    // User document and all user-scoped subcollections
     match /users/{userId} {
-      allow read: if isOwner(userId);
+      allow read, write: if isOwner(userId);
 
       // Financial Transactions
       match /transactions/{transactionId} {
-        allow read: if isOwner(userId);
-        allow create: if isOwner(userId) && isValidId(transactionId) && incoming().userId == userId;
-        allow update: if isOwner(userId) && incoming().userId == userId;
-        allow delete: if isOwner(userId);
+        allow read, write: if isOwner(userId);
       }
 
       // Financial Categories
       match /categories/{categoryId} {
-        allow read: if isOwner(userId);
-        allow create: if isOwner(userId) && isValidId(categoryId) && incoming().userId == userId;
-        allow update: if isOwner(userId) && incoming().userId == userId;
-        allow delete: if isOwner(userId);
+        allow read, write: if isOwner(userId);
       }
 
       // User Profile
       match /profile/{docId} {
-        allow read: if isOwner(userId);
-        allow create, update: if isOwner(userId) && incoming().userId == userId;
-        allow delete: if isOwner(userId);
+        allow read, write: if isOwner(userId);
       }
 
       // Budget Configurations
       match /budgetConfig/{docId} {
-        allow read: if isOwner(userId);
-        allow create, update: if isOwner(userId) && incoming().userId == userId;
-        allow delete: if isOwner(userId);
+        allow read, write: if isOwner(userId);
       }
 
       // Recurring Rules
       match /recurringRules/{ruleId} {
-        allow read: if isOwner(userId);
-        allow create: if isOwner(userId) && isValidId(ruleId) && incoming().userId == userId;
-        allow update: if isOwner(userId) && incoming().userId == userId;
-        allow delete: if isOwner(userId);
+        allow read, write: if isOwner(userId);
+      }
+
+      // Deleted items tracking (tombstones)
+      match /deletedTracking/{docId} {
+        allow read, write: if isOwner(userId);
       }
     }
   }
 }
+

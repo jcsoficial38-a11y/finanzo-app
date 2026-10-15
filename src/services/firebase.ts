@@ -176,6 +176,16 @@ export function subscribeToAuth(callback: (user: FirebaseUser | null) => void) {
 // User Cloud Data Synchronization Services
 // ==========================================
 
+export interface UserSecurityCloudData {
+  pin?: string | null;
+  pinEnabled?: boolean;
+  biometricEnabled?: boolean;
+  biometricRegistered?: boolean;
+  biometricType?: string;
+  biometricDate?: string;
+  biometricCredentialId?: string | null;
+}
+
 export interface UserCloudData {
   transactions: Transaction[];
   incomeCategories: Category[];
@@ -185,16 +195,42 @@ export interface UserCloudData {
   categoryBudgets: Record<string, number>;
   userProfile?: UserProfile;
   recurringRules: RecurringExpenseRule[];
+  security?: UserSecurityCloudData;
+  deletedItemIds?: string[];
 }
 
 /**
- * Save all transactions and settings to cloud for a specific user
+ * Save all transactions, profile, security and settings to cloud for a specific user
+ * Dual persistence: saves to users/{userId} and subcollections
  */
 export async function syncUserDataToCloud(userId: string, data: UserCloudData): Promise<void> {
   if (!userId) return;
 
   try {
-    // 1. Sync User Profile
+    // 1. Dual-Engine Persistence: Documento Principal do Usuário ('users/{userId}')
+    // Salva Nome do Gestor/Usuário, login, chave Pix, configurações e status da Biometria/Digital
+    const userDocRef = doc(db, 'users', userId);
+    await setDoc(
+      userDocRef,
+      {
+        userId,
+        name: data.userProfile?.name || 'Usuário',
+        managerName: data.userProfile?.managerName || data.userProfile?.name || 'Usuário',
+        login: data.userProfile?.login || '@usuario',
+        pixKey: data.userProfile?.pixKey || '',
+        avatarUrl: data.userProfile?.avatarUrl || '',
+        avatarColor: data.userProfile?.avatarColor || '#7dd3fc',
+        bio: data.userProfile?.bio || '',
+        joinedDate: data.userProfile?.joinedDate || 'Setembro 2026',
+        themeColor: data.userProfile?.themeColor || 'sky',
+        ...(data.security ? { security: data.security } : {}),
+        ...(data.deletedItemIds && data.deletedItemIds.length > 0 ? { deletedItemIds: data.deletedItemIds } : {}),
+        updatedAt: new Date().toISOString(),
+      },
+      { merge: true }
+    );
+
+    // Subcoleção de Perfil ('users/{userId}/profile/current')
     if (data.userProfile) {
       const profileRef = doc(db, 'users', userId, 'profile', 'current');
       await setDoc(
@@ -202,11 +238,14 @@ export async function syncUserDataToCloud(userId: string, data: UserCloudData): 
         {
           userId,
           name: data.userProfile.name,
+          managerName: data.userProfile.managerName || data.userProfile.name,
           login: data.userProfile.login,
+          pixKey: data.userProfile.pixKey || '',
           avatarUrl: data.userProfile.avatarUrl || '',
           avatarColor: data.userProfile.avatarColor || '#7dd3fc',
           bio: data.userProfile.bio || '',
           joinedDate: data.userProfile.joinedDate,
+          themeColor: data.userProfile.themeColor || 'sky',
           updatedAt: new Date().toISOString(),
         },
         { merge: true }
@@ -227,28 +266,29 @@ export async function syncUserDataToCloud(userId: string, data: UserCloudData): 
       { merge: true }
     );
 
-    // 3. Batch sync categories
+    // 3. Batch sync categories (ignoring deleted categories)
+    const deletedSet = new Set(data.deletedItemIds || []);
     const allCategories = [...data.incomeCategories, ...data.expenseCategories];
-    if (allCategories.length > 0) {
-      for (const cat of allCategories) {
-        const catRef = doc(db, 'users', userId, 'categories', cat.id);
-        await setDoc(
-          catRef,
-          {
-            id: cat.id,
-            userId,
-            name: cat.name,
-            type: cat.type,
-            iconName: cat.iconName || '',
-            color: cat.color || '',
-          },
-          { merge: true }
-        );
-      }
+    for (const cat of allCategories) {
+      if (deletedSet.has(cat.id)) continue;
+      const catRef = doc(db, 'users', userId, 'categories', cat.id);
+      await setDoc(
+        catRef,
+        {
+          id: cat.id,
+          userId,
+          name: cat.name,
+          type: cat.type,
+          iconName: cat.iconName || '',
+          color: cat.color || '',
+        },
+        { merge: true }
+      );
     }
 
-    // 4. Sync Transactions in batch
+    // 4. Sync Transactions in batch (filtering out any deleted items)
     for (const tx of data.transactions) {
+      if (deletedSet.has(tx.id)) continue;
       const txRef = doc(db, 'users', userId, 'transactions', tx.id);
       await setDoc(
         txRef,
@@ -263,6 +303,7 @@ export async function syncUserDataToCloud(userId: string, data: UserCloudData): 
 
     // 5. Sync Recurring Rules
     for (const rule of data.recurringRules) {
+      if (deletedSet.has(rule.id)) continue;
       const ruleRef = doc(db, 'users', userId, 'recurringRules', rule.id);
       await setDoc(
         ruleRef,
@@ -273,45 +314,96 @@ export async function syncUserDataToCloud(userId: string, data: UserCloudData): 
         { merge: true }
       );
     }
+
+    // 6. Delete any deleted items from cloud to ensure permanent exclusion
+    if (data.deletedItemIds && data.deletedItemIds.length > 0) {
+      for (const delId of data.deletedItemIds) {
+        // Asynchronously delete from all candidate collections without throwing
+        deleteDoc(doc(db, 'users', userId, 'transactions', delId)).catch(() => {});
+        deleteDoc(doc(db, 'users', userId, 'categories', delId)).catch(() => {});
+        deleteDoc(doc(db, 'users', userId, 'recurringRules', delId)).catch(() => {});
+      }
+    }
   } catch (error) {
     handleFirestoreError(error, OperationType.WRITE, `users/${userId}`);
   }
 }
 
 /**
- * Fetch all cloud data for a user
+ * Fetch all cloud data for a user with automatic restoration of profile, Pix, and Biometrics
  */
 export async function fetchUserDataFromCloud(userId: string): Promise<UserCloudData | null> {
   if (!userId) return null;
 
   try {
-    // 1. Fetch Profile
-    const profileSnap = await getDoc(doc(db, 'users', userId, 'profile', 'current'));
-    const profileData = profileSnap.exists() ? (profileSnap.data() as UserProfile) : undefined;
+    // 1. Fetch User Main Document ('users/{userId}')
+    const userDocSnap = await getDoc(doc(db, 'users', userId));
+    const userData = userDocSnap.exists() ? userDocSnap.data() : null;
 
-    // 2. Fetch Budgets
+    // 2. Fetch Profile Subcollection
+    const profileSnap = await getDoc(doc(db, 'users', userId, 'profile', 'current'));
+    const profileSubData = profileSnap.exists() ? (profileSnap.data() as UserProfile) : undefined;
+
+    let userProfile: UserProfile | undefined = undefined;
+    if (userData?.name || profileSubData?.name) {
+      userProfile = {
+        name: userData?.name || profileSubData?.name || 'Usuário',
+        managerName: userData?.managerName || profileSubData?.managerName || userData?.name || 'Usuário',
+        login: userData?.login || profileSubData?.login || '@usuario',
+        pixKey: userData?.pixKey || profileSubData?.pixKey || '',
+        avatarUrl: userData?.avatarUrl || profileSubData?.avatarUrl || '',
+        avatarColor: userData?.avatarColor || profileSubData?.avatarColor || '#7dd3fc',
+        bio: userData?.bio || profileSubData?.bio || '',
+        joinedDate: userData?.joinedDate || profileSubData?.joinedDate || 'Setembro 2026',
+        themeColor: userData?.themeColor || profileSubData?.themeColor,
+      };
+    }
+
+    const security: UserSecurityCloudData | undefined = userData?.security || undefined;
+    const deletedItemIds: string[] = Array.isArray(userData?.deletedItemIds) ? userData.deletedItemIds : [];
+    const deletedSet = new Set(deletedItemIds);
+
+    // 3. Fetch Budgets
     const budgetSnap = await getDoc(doc(db, 'users', userId, 'budgetConfig', 'current'));
     const budgetConfig = budgetSnap.exists() ? budgetSnap.data() : null;
 
-    // 3. Fetch Categories
+    // 4. Fetch Categories
     const catSnaps = await getDocs(collection(db, 'users', userId, 'categories'));
     const fetchedCategories: Category[] = [];
     catSnaps.forEach((docSnap) => {
-      fetchedCategories.push(docSnap.data() as Category);
+      const c = docSnap.data() as Category;
+      if (!deletedSet.has(c.id)) {
+        fetchedCategories.push(c);
+      } else {
+        // Item was marked as deleted: remove from cloud permanently
+        deleteDoc(docSnap.ref).catch(() => {});
+      }
     });
 
-    // 4. Fetch Transactions
+    // 5. Fetch Transactions
     const txSnaps = await getDocs(collection(db, 'users', userId, 'transactions'));
     const fetchedTransactions: Transaction[] = [];
     txSnaps.forEach((docSnap) => {
-      fetchedTransactions.push(docSnap.data() as Transaction);
+      const t = docSnap.data() as Transaction;
+      if (!deletedSet.has(t.id)) {
+        fetchedTransactions.push(t);
+      } else {
+        // Item was marked as deleted: remove from cloud permanently
+        deleteDoc(docSnap.ref).catch(() => {});
+      }
     });
 
-    // 5. Fetch Recurring Rules
+    // 6. Fetch Recurring Rules
     const ruleSnaps = await getDocs(collection(db, 'users', userId, 'recurringRules'));
     const fetchedRules: RecurringExpenseRule[] = [];
     ruleSnaps.forEach((docSnap) => {
-      fetchedRules.push(docSnap.data() as RecurringExpenseRule);
+      const r = docSnap.data() as RecurringExpenseRule;
+      if (!deletedSet.has(r.id)) {
+        fetchedRules.push(r);
+      } else {
+        // Item was marked as deleted: remove from cloud permanently
+        deleteDoc(docSnap.ref).catch(() => {});
+      }
     });
 
     const incomeCategories = fetchedCategories.filter((c) => c.type === 'income');
@@ -324,8 +416,10 @@ export async function fetchUserDataFromCloud(userId: string): Promise<UserCloudD
       budgets: budgetConfig?.budgets || {},
       defaultBudget: budgetConfig?.defaultBudget ?? 3500,
       categoryBudgets: budgetConfig?.categoryBudgets || {},
-      userProfile: profileData,
+      userProfile,
       recurringRules: fetchedRules,
+      security,
+      deletedItemIds,
     };
   } catch (error) {
     handleFirestoreError(error, OperationType.GET, `users/${userId}`);
@@ -333,7 +427,7 @@ export async function fetchUserDataFromCloud(userId: string): Promise<UserCloudD
 }
 
 /**
- * Delete a transaction from the cloud
+ * Delete a transaction directly from the cloud
  */
 export async function deleteTransactionFromCloud(userId: string, transactionId: string): Promise<void> {
   if (!userId || !transactionId) return;
@@ -342,6 +436,66 @@ export async function deleteTransactionFromCloud(userId: string, transactionId: 
     await deleteDoc(txRef);
   } catch (error) {
     handleFirestoreError(error, OperationType.DELETE, `users/${userId}/transactions/${transactionId}`);
+  }
+}
+
+/**
+ * Delete a category directly from the cloud
+ */
+export async function deleteCategoryFromCloud(userId: string, categoryId: string): Promise<void> {
+  if (!userId || !categoryId) return;
+  try {
+    const catRef = doc(db, 'users', userId, 'categories', categoryId);
+    await deleteDoc(catRef);
+  } catch (error) {
+    handleFirestoreError(error, OperationType.DELETE, `users/${userId}/categories/${categoryId}`);
+  }
+}
+
+/**
+ * Delete a recurring rule directly from the cloud
+ */
+export async function deleteRecurringRuleFromCloud(userId: string, ruleId: string): Promise<void> {
+  if (!userId || !ruleId) return;
+  try {
+    const ruleRef = doc(db, 'users', userId, 'recurringRules', ruleId);
+    await deleteDoc(ruleRef);
+  } catch (error) {
+    handleFirestoreError(error, OperationType.DELETE, `users/${userId}/recurringRules/${ruleId}`);
+  }
+}
+
+/**
+ * Save user profile and security credentials directly to users/{userId}
+ */
+export async function saveProfileAndSecurityToCloud(
+  userId: string,
+  profile: UserProfile,
+  security?: UserSecurityCloudData
+): Promise<void> {
+  if (!userId) return;
+  try {
+    const userDocRef = doc(db, 'users', userId);
+    await setDoc(
+      userDocRef,
+      {
+        userId,
+        name: profile.name,
+        managerName: profile.managerName || profile.name,
+        login: profile.login,
+        pixKey: profile.pixKey || '',
+        avatarUrl: profile.avatarUrl || '',
+        avatarColor: profile.avatarColor || '#7dd3fc',
+        bio: profile.bio || '',
+        joinedDate: profile.joinedDate,
+        themeColor: profile.themeColor || 'sky',
+        ...(security ? { security } : {}),
+        updatedAt: new Date().toISOString(),
+      },
+      { merge: true }
+    );
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, `users/${userId}`);
   }
 }
 
@@ -367,3 +521,4 @@ export async function clearAllTransactionsFromCloud(userId: string): Promise<voi
     handleFirestoreError(error, OperationType.DELETE, `users/${userId}/transactions`);
   }
 }
+

@@ -30,7 +30,12 @@ import {
   markHasRealUserData,
   requestPersistentStorage,
   getFromIndexedDB,
+  addDeletedItemIds,
+  getDeletedItemIds,
+  isItemDeleted,
 } from '../utils/persistentDatabase';
+import { getStoredPinData, restorePinFromCloud } from '../utils/pinSecurity';
+import { getStoredBiometricData, restoreBiometricFromCloud } from '../utils/biometricSecurity';
 import {
   auth,
   subscribeToAuth,
@@ -39,6 +44,9 @@ import {
   syncUserDataToCloud,
   fetchUserDataFromCloud,
   deleteTransactionFromCloud,
+  deleteCategoryFromCloud,
+  deleteRecurringRuleFromCloud,
+  saveProfileAndSecurityToCloud,
   clearAllTransactionsFromCloud,
 } from '../services/firebase';
 import type { User as FirebaseUser } from 'firebase/auth';
@@ -305,7 +313,7 @@ export function useFinanceStorage() {
     recurringRules,
   ]);
 
-  // 4. Hydrate from Cloud Database (Firestore) when user signs in
+  // 4. Hydrate from Cloud Database (Firestore) when user signs in or opens the app
   useEffect(() => {
     if (!authUser) return;
 
@@ -316,15 +324,51 @@ export function useFinanceStorage() {
         const cloudData = await fetchUserDataFromCloud(authUser.uid);
         if (!isMounted) return;
 
-        if (cloudData && (cloudData.transactions.length > 0 || cloudData.incomeCategories.length > 0)) {
-          if (cloudData.transactions.length > 0) {
-            setTransactions(cloudData.transactions);
+        if (cloudData) {
+          // 1. Dual Persistence: Restore User Profile & Settings
+          if (cloudData.userProfile?.name) {
+            setUserProfile(cloudData.userProfile);
+            safeSetLocalStorage(PERSISTENT_STORAGE_KEYS.USER_PROFILE, cloudData.userProfile);
           }
-          if (cloudData.incomeCategories.length > 0) {
-            setIncomeCategories(cloudData.incomeCategories);
+
+          // 2. Dual Persistence: Restore PIN & Biometrics
+          if (cloudData.security) {
+            restorePinFromCloud(cloudData.security.pin, cloudData.security.pinEnabled);
+            restoreBiometricFromCloud(cloudData.security);
           }
-          if (cloudData.expenseCategories.length > 0) {
-            setExpenseCategories(cloudData.expenseCategories);
+
+          // 3. Sync Tombstone Deleted IDs
+          if (cloudData.deletedItemIds && cloudData.deletedItemIds.length > 0) {
+            addDeletedItemIds(cloudData.deletedItemIds);
+          }
+
+          const deletedSet = new Set(getDeletedItemIds());
+
+          // 4. Filter cloud items against deleted set to ensure deleted items NEVER resurrect
+          const validCloudTxs = (cloudData.transactions || []).filter((t) => !deletedSet.has(t.id));
+          const validIncomeCats = (cloudData.incomeCategories || []).filter((c) => !deletedSet.has(c.id));
+          const validExpenseCats = (cloudData.expenseCategories || []).filter((c) => !deletedSet.has(c.id));
+          const validRules = (cloudData.recurringRules || []).filter((r) => !deletedSet.has(r.id));
+
+          // 5. Intelligent Merge without overwriting user data with sample/initial data
+          if (validCloudTxs.length > 0 || hasRealUserData()) {
+            setTransactions((localTxs) => {
+              const cloudMap = new Map(validCloudTxs.map((t) => [t.id, t]));
+              for (const loc of localTxs) {
+                if (!deletedSet.has(loc.id) && !cloudMap.has(loc.id)) {
+                  cloudMap.set(loc.id, loc);
+                }
+              }
+              const merged = Array.from(cloudMap.values());
+              return merged.length > 0 ? merged : localTxs.filter((t) => !deletedSet.has(t.id));
+            });
+          }
+
+          if (validIncomeCats.length > 0) {
+            setIncomeCategories(validIncomeCats);
+          }
+          if (validExpenseCats.length > 0) {
+            setExpenseCategories(validExpenseCats);
           }
           if (cloudData.budgets && Object.keys(cloudData.budgets).length > 0) {
             setBudgets(cloudData.budgets);
@@ -335,28 +379,39 @@ export function useFinanceStorage() {
           if (cloudData.categoryBudgets && Object.keys(cloudData.categoryBudgets).length > 0) {
             setCategoryBudgets(cloudData.categoryBudgets);
           }
-          if (cloudData.userProfile?.name) {
-            setUserProfile(cloudData.userProfile);
+          if (validRules.length > 0) {
+            setRecurringRules(validRules);
           }
-          if (cloudData.recurringRules && cloudData.recurringRules.length > 0) {
-            setRecurringRules(cloudData.recurringRules);
+
+          // 6. If cloud was completely empty for this user, upload existing local data with security & profile
+          if (validCloudTxs.length === 0 && transactions.length > 0) {
+            const pinData = getStoredPinData();
+            const bioData = getStoredBiometricData();
+            await syncUserDataToCloud(authUser.uid, {
+              transactions: transactions.filter((t) => !deletedSet.has(t.id)),
+              incomeCategories,
+              expenseCategories,
+              budgets,
+              defaultBudget,
+              categoryBudgets,
+              userProfile: {
+                ...userProfile,
+                name: authUser.displayName || userProfile.name,
+                avatarUrl: authUser.photoURL || userProfile.avatarUrl,
+              },
+              recurringRules,
+              security: {
+                pin: pinData.pin,
+                pinEnabled: pinData.isEnabled,
+                biometricEnabled: bioData.isEnabled,
+                biometricRegistered: bioData.isRegistered,
+                biometricType: bioData.type,
+                biometricDate: bioData.registeredDate,
+                biometricCredentialId: bioData.keyId,
+              },
+              deletedItemIds: getDeletedItemIds(),
+            });
           }
-        } else {
-          // Cloud empty for this user: initial upload of local data
-          await syncUserDataToCloud(authUser.uid, {
-            transactions,
-            incomeCategories,
-            expenseCategories,
-            budgets,
-            defaultBudget,
-            categoryBudgets,
-            userProfile: {
-              ...userProfile,
-              name: authUser.displayName || userProfile.name,
-              avatarUrl: authUser.photoURL || userProfile.avatarUrl,
-            },
-            recurringRules,
-          });
         }
         setCloudSyncState('synced');
         setLastSyncTime(new Date());
@@ -380,15 +435,29 @@ export function useFinanceStorage() {
     const timer = setTimeout(async () => {
       try {
         setCloudSyncState('syncing');
+        const pinData = getStoredPinData();
+        const bioData = getStoredBiometricData();
+        const deletedIds = getDeletedItemIds();
+
         await syncUserDataToCloud(authUser.uid, {
-          transactions,
-          incomeCategories,
-          expenseCategories,
+          transactions: transactions.filter((t) => !deletedIds.includes(t.id)),
+          incomeCategories: incomeCategories.filter((c) => !deletedIds.includes(c.id)),
+          expenseCategories: expenseCategories.filter((c) => !deletedIds.includes(c.id)),
           budgets,
           defaultBudget,
           categoryBudgets,
           userProfile,
-          recurringRules,
+          recurringRules: recurringRules.filter((r) => !deletedIds.includes(r.id)),
+          security: {
+            pin: pinData.pin,
+            pinEnabled: pinData.isEnabled,
+            biometricEnabled: bioData.isEnabled,
+            biometricRegistered: bioData.isRegistered,
+            biometricType: bioData.type,
+            biometricDate: bioData.registeredDate,
+            biometricCredentialId: bioData.keyId,
+          },
+          deletedItemIds: deletedIds,
         });
         setCloudSyncState('synced');
         setLastSyncTime(new Date());
@@ -616,12 +685,19 @@ export function useFinanceStorage() {
 
   const deleteCategory = useCallback((categoryId: string, type: CategoryType) => {
     markHasRealUserData();
+    addDeletedItemIds(categoryId);
+
+    const uid = authUser?.uid || auth.currentUser?.uid;
+    if (uid) {
+      deleteCategoryFromCloud(uid, categoryId).catch(() => {});
+    }
+
     if (type === 'income') {
       setIncomeCategories((prev) => prev.filter((c) => c.id !== categoryId));
     } else {
       setExpenseCategories((prev) => prev.filter((c) => c.id !== categoryId));
     }
-  }, []);
+  }, [authUser]);
 
   const setCategoryBudget = useCallback((categoryId: string, amount: number) => {
     markHasRealUserData();
@@ -633,11 +709,32 @@ export function useFinanceStorage() {
 
   const updateUserProfile = useCallback((updates: Partial<UserProfile>) => {
     markHasRealUserData();
-    setUserProfile((prev) => ({
-      ...prev,
-      ...updates,
-    }));
-  }, []);
+    setUserProfile((prev) => {
+      const next: UserProfile = {
+        ...prev,
+        ...updates,
+      };
+      safeSetLocalStorage(PERSISTENT_STORAGE_KEYS.USER_PROFILE, next);
+
+      // Dual persistence: save immediately to Firestore users/{userId} if user is logged in
+      const uid = authUser?.uid || auth.currentUser?.uid;
+      if (uid) {
+        const pinData = getStoredPinData();
+        const bioData = getStoredBiometricData();
+        saveProfileAndSecurityToCloud(uid, next, {
+          pin: pinData.pin,
+          pinEnabled: pinData.isEnabled,
+          biometricEnabled: bioData.isEnabled,
+          biometricRegistered: bioData.isRegistered,
+          biometricType: bioData.type,
+          biometricDate: bioData.registeredDate,
+          biometricCredentialId: bioData.keyId,
+        }).catch((err) => console.warn('[FinanzoStorage] Falha ao persistir perfil na nuvem:', err));
+      }
+
+      return next;
+    });
+  }, [authUser]);
 
   // Transaction creation
   const addTransaction = useCallback(
@@ -831,7 +928,7 @@ export function useFinanceStorage() {
     [transactions]
   );
 
-  // Transaction deletion
+  // Transaction deletion with immediate local + cloud deletion & tombstone tracking
   const deleteTransaction = useCallback(
     (
       transactionId: string,
@@ -842,6 +939,7 @@ export function useFinanceStorage() {
     ) => {
       markHasRealUserData();
       const { deleteAllInstallments = false, deleteRecurringMode = 'single' } = options || {};
+      const uid = authUser?.uid || auth.currentUser?.uid;
 
       setTransactions((prev) => {
         const target = prev.find((t) => t.id === transactionId);
@@ -849,12 +947,36 @@ export function useFinanceStorage() {
 
         // 1. Handle Installments deletion
         if (deleteAllInstallments && target.installmentGroupId) {
+          const matching = prev.filter((t) => t.installmentGroupId === target.installmentGroupId);
+          const idsToDelete = matching.map((t) => t.id);
+          addDeletedItemIds(idsToDelete);
+
+          if (uid) {
+            for (const id of idsToDelete) {
+              deleteTransactionFromCloud(uid, id).catch(() => {});
+            }
+          }
+
           return prev.filter((t) => t.installmentGroupId !== target.installmentGroupId);
         }
 
         // 2. Handle Recurring Fixed Expense deletion
         if (target.recurringGroupId) {
           if (deleteRecurringMode === 'future') {
+            const futureTxs = prev.filter(
+              (t) =>
+                t.recurringGroupId === target.recurringGroupId &&
+                t.monthKey >= target.monthKey
+            );
+            const futureIds = futureTxs.map((t) => t.id);
+            addDeletedItemIds(futureIds);
+
+            if (uid) {
+              for (const id of futureIds) {
+                deleteTransactionFromCloud(uid, id).catch(() => {});
+              }
+            }
+
             // Stop recurrence from this month onwards
             setRecurringRules((rules) =>
               rules.map((r) => {
@@ -865,7 +987,7 @@ export function useFinanceStorage() {
                 return r;
               })
             );
-            // Delete target and all future instances of this recurring group
+
             return prev.filter(
               (t) =>
                 !(
@@ -874,7 +996,12 @@ export function useFinanceStorage() {
                 )
             );
           } else {
-            // 'single': Only exclude this specific month, subsequent months continue
+            // 'single': Only exclude this specific month
+            addDeletedItemIds(transactionId);
+            if (uid) {
+              deleteTransactionFromCloud(uid, transactionId).catch(() => {});
+            }
+
             setRecurringRules((rules) =>
               rules.map((r) => {
                 if (r.id === target.recurringGroupId) {
@@ -886,14 +1013,15 @@ export function useFinanceStorage() {
                 return r;
               })
             );
-            // Delete only this month's transaction
+
             return prev.filter((t) => t.id !== transactionId);
           }
         }
 
         // 3. Regular transaction deletion
-        if (authUser) {
-          deleteTransactionFromCloud(authUser.uid, transactionId).catch(() => {});
+        addDeletedItemIds(transactionId);
+        if (uid) {
+          deleteTransactionFromCloud(uid, transactionId).catch(() => {});
         }
         return prev.filter((t) => t.id !== transactionId);
       });
@@ -904,6 +1032,11 @@ export function useFinanceStorage() {
   // Clear all transactions history (Zerar Histórico de Transações / Limpar Dados Salvos)
   // Zera todo o histórico de lançamentos locais para 0 transações, mantendo perfil, categorias e senhas
   const clearAllTransactions = useCallback(() => {
+    // Collect all transaction IDs to add to tombstones
+    const allIds = transactions.map((t) => t.id);
+    const ruleIds = recurringRules.map((r) => r.id);
+    addDeletedItemIds([...allIds, ...ruleIds]);
+
     // 1. Clear in-memory transactions and recurring rules
     setTransactions([]);
     setRecurringRules([]);
@@ -929,10 +1062,11 @@ export function useFinanceStorage() {
     });
 
     // 5. Clear from cloud if logged in
-    if (authUser) {
-      clearAllTransactionsFromCloud(authUser.uid).catch(() => {});
+    const uid = authUser?.uid || auth.currentUser?.uid;
+    if (uid) {
+      clearAllTransactionsFromCloud(uid).catch(() => {});
     }
-  }, [authUser, incomeCategories, expenseCategories, budgets, defaultBudget, categoryBudgets, userProfile]);
+  }, [authUser, transactions, recurringRules, incomeCategories, expenseCategories, budgets, defaultBudget, categoryBudgets, userProfile]);
 
   // Manual Trigger to sync immediately with Cloud
   const syncNow = useCallback(async (targetUserId?: string) => {
