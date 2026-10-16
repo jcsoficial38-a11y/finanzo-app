@@ -51,8 +51,8 @@ interface TransactionsListProps {
 type FilterKind = 'all' | 'income' | 'expense' | 'fixed' | 'variable' | 'installment';
 
 export const TransactionsList: React.FC<TransactionsListProps> = ({
-  transactions,
-  categories,
+  transactions = [],
+  categories = [],
   onDeleteTransaction,
   onUpdateTransaction,
   onOpenAddModal,
@@ -78,13 +78,15 @@ export const TransactionsList: React.FC<TransactionsListProps> = ({
   const [editApplyToFuture, setEditApplyToFuture] = useState(false);
 
   const categoriesMap = useMemo(() => {
-    return new Map(categories.map((c) => [c.id, c]));
+    return new Map((categories || []).map((c) => [c.id, c]));
   }, [categories]);
 
   const categoryCounts = useMemo(() => {
     const counts = new Map<string, number>();
-    for (const t of transactions) {
-      counts.set(t.categoryId, (counts.get(t.categoryId) || 0) + 1);
+    for (const t of (transactions || [])) {
+      if (t?.categoryId) {
+        counts.set(t.categoryId, (counts.get(t.categoryId) || 0) + 1);
+      }
     }
     return counts;
   }, [transactions]);

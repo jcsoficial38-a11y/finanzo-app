@@ -83,12 +83,12 @@ export const Header: React.FC<HeaderProps> = ({
   }, []);
 
   const displayName =
-    profile.name && profile.name !== 'Usuário'
+    (profile?.name && profile.name !== 'Usuário')
       ? profile.name
-      : cachedName || profile.name || 'Usuário';
+      : cachedName || profile?.name || 'Usuário';
 
   const displayPhoto = !imgFailed
-    ? profile.avatarUrl || cachedPhoto || ''
+    ? profile?.avatarUrl || cachedPhoto || ''
     : '';
 
   return (
