@@ -33,48 +33,8 @@
     </script>
   </head>
   <body class="bg-slate-50 text-slate-800 antialiased selection:bg-teal-100 selection:text-teal-900 font-sans">
-    <!-- Container Principal do App com Shell Visual Imediato (Anti-Tela Branca) -->
-    <div id="root">
-      <div class="min-h-screen bg-slate-50 text-slate-800 flex flex-col justify-between">
-        <div class="w-full max-w-md mx-auto bg-slate-50 flex-1 flex flex-col min-h-screen pb-24 shadow-xs sm:border-x sm:border-slate-200/60">
-          <!-- Top Header Skeleton -->
-          <header class="sticky top-0 z-30 bg-white/95 backdrop-blur-md border-b border-slate-100/80 px-4 pt-4 pb-2">
-            <div class="flex items-center justify-between h-11">
-              <div class="flex items-center gap-2">
-                <div class="w-7 h-7 rounded-xl bg-teal-600 text-white flex items-center justify-center text-xs font-bold shadow-xs">
-                  FP
-                </div>
-                <h1 class="font-semibold text-slate-800 text-sm tracking-tight">
-                  Finanças Pessoais
-                </h1>
-              </div>
-              <div class="flex items-center gap-1.5">
-                <div class="h-8 px-2.5 rounded-xl text-xs font-semibold flex items-center gap-1.5 text-slate-600 border border-slate-200/80 bg-white">
-                  Valores
-                </div>
-                <div class="w-7 h-7 rounded-full bg-slate-200 border border-slate-100 flex items-center justify-center text-[10px] font-bold text-slate-700">
-                  FP
-                </div>
-              </div>
-            </div>
-            <div class="flex items-center justify-between mt-1 bg-slate-50/90 rounded-2xl p-1 border border-slate-100">
-              <div class="w-10 h-10 flex items-center justify-center text-slate-400">‹</div>
-              <div class="font-semibold text-slate-800 text-sm">Carregando painel...</div>
-              <div class="w-10 h-10 flex items-center justify-center text-slate-400">›</div>
-            </div>
-          </header>
-          <!-- Main Content Area -->
-          <main class="flex-1 p-4 space-y-4">
-            <div class="p-4 rounded-3xl bg-white border border-slate-200/70 shadow-xs space-y-2 animate-pulse">
-              <div class="h-4 bg-slate-200 rounded w-1/3"></div>
-              <div class="h-8 bg-slate-200 rounded w-2/3 mt-2"></div>
-            </div>
-          </main>
-        </div>
-      </div>
-    </div>
+    <div id="root"></div>
 
-    <!-- Script Principal com Carregamento Seguro -->
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
