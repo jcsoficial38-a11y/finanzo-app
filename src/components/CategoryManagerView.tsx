@@ -103,8 +103,8 @@ export const CategoryManagerView: React.FC<CategoryManagerViewProps> = ({
   const confirmDeleteCategory = () => {
     if (catToDelete) {
       onDeleteCategory(catToDelete.id, catToDelete.type);
-      setStatusMessage(`Categoria "${catToDelete.name}" removida da nuvem e do dispositivo com sucesso!`);
-      setTimeout(() => setStatusMessage(null), 3500);
+      setStatusMessage(`Categoria "${catToDelete.name}" excluída.`);
+      setTimeout(() => setStatusMessage(null), 3000);
       setCatToDelete(null);
     }
   };
@@ -490,11 +490,8 @@ export const CategoryManagerView: React.FC<CategoryManagerViewProps> = ({
             <p className="text-xs text-slate-600 leading-relaxed">
               Tem certeza que deseja excluir{' '}
               <strong className="text-slate-800">"{catToDelete.name}"</strong>?
-              <span className="block text-rose-600 font-semibold mt-1">
-                A categoria será excluída da nuvem (Firestore) e deste dispositivo.
-              </span>
               {getUsageCount(catToDelete.id) > 0 && (
-                <span className="block text-amber-600 font-medium mt-1">
+                <span className="block text-rose-500 font-medium mt-1">
                   Aviso: existem {getUsageCount(catToDelete.id)} lançamentos
                   vinculados a ela.
                 </span>
@@ -511,9 +508,9 @@ export const CategoryManagerView: React.FC<CategoryManagerViewProps> = ({
               <button
                 type="button"
                 onClick={confirmDeleteCategory}
-                className="flex-1 py-2 text-xs font-semibold text-white bg-rose-600 hover:bg-rose-700 rounded-xl cursor-pointer shadow-xs"
+                className="flex-1 py-2 text-xs font-semibold text-white bg-rose-600 hover:bg-rose-700 rounded-xl cursor-pointer"
               >
-                Excluir Definitivamente
+                Excluir
               </button>
             </div>
           </div>

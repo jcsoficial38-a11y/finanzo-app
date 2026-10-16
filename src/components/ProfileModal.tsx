@@ -23,8 +23,6 @@ import {
   Cloud,
   RefreshCw,
   LogOut,
-  Loader2,
-  QrCode,
 } from 'lucide-react';
 import { UserProfile } from '../types/finance';
 import { PASTEL_COLORS } from '../data/initialData';
@@ -46,9 +44,6 @@ import {
   removeBiometric,
   BiometricStatus,
 } from '../utils/biometricSecurity';
-import { getApps } from 'firebase/app';
-import { getAuth, signInWithPopup, GoogleAuthProvider } from 'firebase/auth';
-import { auth, googleProvider } from '../services/firebase';
 
 interface ProfileModalProps {
   isOpen: boolean;
@@ -64,7 +59,7 @@ interface ProfileModalProps {
   cloudSyncState?: 'idle' | 'syncing' | 'synced' | 'error';
   onLoginGoogle?: () => void;
   onLogoutGoogle?: () => void;
-  onSyncNow?: (targetUserId?: string) => void;
+  onSyncNow?: () => void;
 }
 
 export const ProfileModal: React.FC<ProfileModalProps> = ({
@@ -86,25 +81,10 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
   const [name, setName] = useState(profile.name);
   const [login, setLogin] = useState(profile.login);
   const [bio, setBio] = useState(profile.bio || '');
-  const [pixKey, setPixKey] = useState(profile.pixKey || '');
   const [avatarUrl, setAvatarUrl] = useState(profile.avatarUrl || '');
   const [avatarColor, setAvatarColor] = useState(profile.avatarColor || '#7dd3fc');
   const [savedSuccess, setSavedSuccess] = useState(false);
   const { themeId, setTheme } = useAppTheme();
-
-  // Sincroniza e restaura automaticamente os dados do perfil, chave Pix e biometria ao abrir
-  React.useEffect(() => {
-    if (isOpen) {
-      setName(profile.name);
-      setLogin(profile.login);
-      setBio(profile.bio || '');
-      setPixKey(profile.pixKey || '');
-      setAvatarUrl(profile.avatarUrl || '');
-      setAvatarColor(profile.avatarColor || '#7dd3fc');
-      setPinStatus(getPinStatus());
-      setBioStatus(getBiometricStatus());
-    }
-  }, [profile, isOpen]);
 
   // 4-Digit PIN Security State
   const [pinStatus, setPinStatus] = useState<PinStatus>(() => getPinStatus());
@@ -124,72 +104,6 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
   // Clear Transactions state & safety confirmation
   const [showClearConfirmModal, setShowClearConfirmModal] = useState(false);
   const [clearSuccess, setClearSuccess] = useState('');
-
-  // Google Login state & Feedback
-  const [isLoggingInGoogle, setIsLoggingInGoogle] = useState(false);
-  const [googleAuthError, setGoogleAuthError] = useState('');
-  const [googleAuthSuccess, setGoogleAuthSuccess] = useState('');
-
-  const handleLoginGoogleClick = async (e?: React.MouseEvent) => {
-    if (e) {
-      e.preventDefault();
-      e.stopPropagation();
-    }
-    setIsLoggingInGoogle(true);
-    setGoogleAuthError('');
-    setGoogleAuthSuccess('');
-
-    try {
-      let authInstance = auth;
-      if (!authInstance) {
-        try {
-          authInstance = getApps().length ? getAuth() : null;
-        } catch {}
-      }
-      if (!authInstance) {
-        throw new Error('Serviço do Google indisponível no momento. O aplicativo está operando normalmente no modo Armazenamento Local.');
-      }
-      const provider = googleProvider || new GoogleAuthProvider();
-      provider.setCustomParameters({ prompt: 'select_account' });
-
-      // Dispara o login via signInWithPopup usando o provedor do Google
-      const result = await signInWithPopup(authInstance, provider);
-      const user = result?.user;
-
-      if (user) {
-        setGoogleAuthSuccess(`Conectado como ${user.displayName || user.email}! Sincronizado Online.`);
-        if (onSyncNow) {
-          await onSyncNow(user.uid);
-        }
-        setTimeout(() => setGoogleAuthSuccess(''), 5000);
-      }
-    } catch (err: any) {
-      console.error('[Firebase Auth] Erro ao conectar com o Google:', err);
-      let friendlyMessage = 'Ocorreu uma falha ao conectar com o Google. Tente novamente.';
-
-      if (err?.code === 'auth/popup-blocked') {
-        friendlyMessage = 'A janela de login foi bloqueada pelo navegador. Permita pop-ups para este site e clique novamente.';
-      } else if (err?.code === 'auth/popup-closed-by-user') {
-        friendlyMessage = 'A janela de login do Google foi fechada antes de concluir a autenticação.';
-      } else if (err?.code === 'auth/cancelled-popup-request') {
-        friendlyMessage = 'Solicitação de login cancelada. Tente novamente.';
-      } else if (err?.code === 'auth/unauthorized-domain') {
-        friendlyMessage = 'Domínio atual não autorizado no Firebase Console. Adicione este domínio em Authentication > Settings > Authorized Domains no painel do Firebase.';
-      } else if (err?.code === 'auth/operation-not-allowed') {
-        friendlyMessage = 'O provedor Google ainda não foi ativado no Firebase Authentication. Ative-o no console do Firebase.';
-      } else if (err?.code === 'auth/invalid-api-key' || err?.code === 'auth/api-key-not-valid') {
-        friendlyMessage = 'Chave de API do Firebase inválida. Verifique suas credenciais em firebaseConfig.';
-      } else if (err?.code === 'auth/network-request-failed') {
-        friendlyMessage = 'Erro de rede ao conectar com os servidores do Google. Verifique sua conexão com a internet.';
-      } else if (err?.message) {
-        friendlyMessage = `Erro: ${err.message}`;
-      }
-
-      setGoogleAuthError(friendlyMessage);
-    } finally {
-      setIsLoggingInGoogle(false);
-    }
-  };
 
   const handleConfirmClearTransactions = () => {
     if (onClearTransactions) {
@@ -349,10 +263,8 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
 
     onUpdateProfile({
       name: name.trim(),
-      managerName: name.trim(),
       login: login.trim(),
       bio: bio.trim(),
-      pixKey: pixKey.trim(),
       avatarUrl,
       avatarColor,
     });
@@ -490,10 +402,10 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
             )}
           </div>
 
-          {/* Field 1: Nome do Gestor / Usuário */}
+          {/* Field 1: Nome */}
           <div>
             <label className="block text-xs font-semibold text-slate-700 mb-1">
-              Nome do Gestor / Usuário
+              Nome
             </label>
             <div className="relative">
               <User className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
@@ -501,7 +413,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
                 type="text"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                placeholder="Seu nome ou nome do gestor"
+                placeholder="Seu nome completo"
                 required
                 className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-800 focus:outline-hidden focus:border-teal-500 focus:bg-white transition-all"
               />
@@ -526,24 +438,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
             </div>
           </div>
 
-          {/* Field 3: Chave Pix do Gestor / Conta */}
-          <div>
-            <label className="block text-xs font-semibold text-slate-700 mb-1">
-              Chave Pix (Gestor / Conta)
-            </label>
-            <div className="relative">
-              <QrCode className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
-              <input
-                type="text"
-                value={pixKey}
-                onChange={(e) => setPixKey(e.target.value)}
-                placeholder="CPF, CNPJ, Celular, E-mail ou chave aleatória"
-                className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium text-slate-800 focus:outline-hidden focus:border-teal-500 focus:bg-white transition-all font-mono"
-              />
-            </div>
-          </div>
-
-          {/* Field 4: Bio / Meta Financeira */}
+          {/* Field 3: Bio / Meta Financeira */}
           <div>
             <label className="block text-xs font-semibold text-slate-700 mb-1">
               Frase ou Meta Financeira
@@ -897,13 +792,13 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
                           : 'bg-slate-200 text-slate-700'
                       }`}
                     >
-                      {authUser ? 'Sincronizado Online' : 'Modo Offline'}
+                      {authUser ? 'Sincronizado Online' : 'Armazenamento Local'}
                     </span>
                   </h4>
                   <p className="text-[11px] text-sky-700 leading-tight">
                     {authUser
                       ? `Conectado como ${authUser.displayName || authUser.email}`
-                      : 'Operando localmente. Conecte com o Google para backup em tempo real.'}
+                      : 'Sincronize com o Firestore para acessar de qualquer celular ou PC'}
                   </p>
                 </div>
               </div>
@@ -921,7 +816,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
                     <span>
                       {cloudSyncState === 'syncing'
                         ? 'Sincronizando...'
-                        : 'Sincronizado Online'}
+                        : 'Firestore Conectado'}
                     </span>
                   </span>
                 </div>
@@ -929,7 +824,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
                 <div className="flex items-center gap-2">
                   <button
                     type="button"
-                    onClick={() => onSyncNow?.()}
+                    onClick={onSyncNow}
                     disabled={cloudSyncState === 'syncing'}
                     className="flex-1 py-2 px-3 bg-white hover:bg-sky-100/70 active:bg-sky-100 border border-sky-200 text-sky-800 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-colors shadow-2xs"
                   >
@@ -959,37 +854,15 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
               <div className="space-y-2 pt-1 border-t border-sky-200/60">
                 <button
                   type="button"
-                  onClick={handleLoginGoogleClick}
-                  disabled={isLoggingInGoogle}
-                  className="w-full py-2.5 px-3 bg-sky-600 hover:bg-sky-700 active:scale-98 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all shadow-xs disabled:opacity-75 disabled:cursor-not-allowed cursor-pointer"
+                  onClick={onLoginGoogle}
+                  className="w-full py-2.5 px-3 bg-sky-600 hover:bg-sky-700 active:scale-98 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all shadow-xs"
                 >
-                  {isLoggingInGoogle ? (
-                    <>
-                      <Loader2 className="w-4 h-4 animate-spin text-white" />
-                      <span>Conectando com o Google...</span>
-                    </>
-                  ) : (
-                    <>
-                      <Cloud className="w-4 h-4 text-white" />
-                      <span>Conectar com Google (Ativar Nuvem)</span>
-                    </>
-                  )}
+                  <Cloud className="w-4 h-4 text-white" />
+                  <span>Conectar com Google (Ativar Nuvem)</span>
                 </button>
-                {googleAuthError ? (
-                  <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-rose-700 text-xs flex items-start gap-2 animate-in fade-in">
-                    <AlertCircle className="w-4 h-4 text-rose-500 shrink-0 mt-0.5" />
-                    <span className="leading-tight">{googleAuthError}</span>
-                  </div>
-                ) : googleAuthSuccess ? (
-                  <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-emerald-800 text-xs flex items-start gap-2 animate-in fade-in">
-                    <Check className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
-                    <span className="leading-tight">{googleAuthSuccess}</span>
-                  </div>
-                ) : (
-                  <p className="text-[10px] text-sky-800/80 text-center">
-                    Todos os lançamentos locais serão salvos com segurança no Firebase Firestore.
-                  </p>
-                )}
+                <p className="text-[10px] text-sky-800/80 text-center">
+                  Todos os lançamentos locais serão salvos com segurança no Firebase Firestore.
+                </p>
               </div>
             )}
           </div>

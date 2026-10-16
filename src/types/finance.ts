@@ -56,9 +56,7 @@ export interface MonthSummary {
 
 export interface UserProfile {
   name: string;
-  managerName?: string; // Nome do Gestor / Responsável
   login: string; // E-mail or Username
-  pixKey?: string; // Chave Pix do Gestor/Usuário
   avatarUrl?: string; // Data URL or Image URL
   avatarColor?: string; // Background color for initial avatar
   bio?: string;

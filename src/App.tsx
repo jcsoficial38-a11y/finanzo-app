@@ -25,9 +25,8 @@ import { CategoryManagerModal } from './components/CategoryManagerModal';
 import { CategoryManagerView } from './components/CategoryManagerView';
 import { ProfileModal } from './components/ProfileModal';
 import { LockScreen } from './components/LockScreen';
-import { getPinStatus, getStoredPinData } from './utils/pinSecurity';
-import { getBiometricStatus, getStoredBiometricData } from './utils/biometricSecurity';
-import { saveProfileAndSecurityToCloud } from './services/firebase';
+import { getPinStatus } from './utils/pinSecurity';
+import { getBiometricStatus } from './utils/biometricSecurity';
 import { ActiveTab } from './types/finance';
 import { formatCurrency } from './utils/formatters';
 import { exportMonthToCSV } from './utils/csvExport';
@@ -75,8 +74,12 @@ export default function App() {
   const [isCategoryModalOpen, setIsCategoryModalOpen] = useState(false);
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
 
-  // 4-Digit PIN & Biometric Lock State (Garante navegação 100% liberada na abertura)
-  const [isLocked, setIsLocked] = useState<boolean>(false);
+  // 4-Digit PIN & Biometric Lock State
+  const [isLocked, setIsLocked] = useState<boolean>(() => {
+    const pin = getPinStatus();
+    const bio = getBiometricStatus();
+    return (pin.isEnabled && pin.hasPin) || (bio.isEnabled && bio.hasKey);
+  });
 
   // Combine income and expense categories for lookup
   const allCategories = [...incomeCategories, ...expenseCategories];
@@ -359,19 +362,6 @@ export default function App() {
           const bio = getBiometricStatus();
           if ((!pin.isEnabled || !pin.hasPin) && (!bio.isEnabled || !bio.hasKey)) {
             setIsLocked(false);
-          }
-          if (authUser?.uid) {
-            const pinData = getStoredPinData();
-            const bioData = getStoredBiometricData();
-            saveProfileAndSecurityToCloud(authUser.uid, userProfile, {
-              pin: pinData.pin,
-              pinEnabled: pinData.isEnabled,
-              biometricEnabled: bioData.isEnabled,
-              biometricRegistered: bioData.isRegistered,
-              biometricType: bioData.type,
-              biometricDate: bioData.registeredDate,
-              biometricCredentialId: bioData.keyId,
-            }).catch(() => {});
           }
         }}
       />

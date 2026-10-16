@@ -23,7 +23,6 @@ export const PERSISTENT_STORAGE_KEYS = {
   RECURRING_RULES: 'finanzo_recurring_fixed_rules_v1',
   HAS_USER_DATA: 'finanzo_has_real_user_data_v1',
   MASTER_BACKUP: 'finanzo_master_snapshot_v2',
-  DELETED_ITEM_IDS: 'finanzo_deleted_item_ids_v1',
 };
 
 export interface MasterBackupPayload {
@@ -140,50 +139,6 @@ export function markHasRealUserData(): void {
   localStorage.setItem(PERSISTENT_STORAGE_KEYS.HAS_USER_DATA, 'true');
   saveToIndexedDB(PERSISTENT_STORAGE_KEYS.HAS_USER_DATA, true).catch(() => {});
 }
-
-// Deleted Items Tracking (Tombstones: ensures user-deleted items are never resurrected by cloud or local backups)
-export function getDeletedItemIds(): string[] {
-  if (typeof window === 'undefined') return [];
-  try {
-    const raw = localStorage.getItem(PERSISTENT_STORAGE_KEYS.DELETED_ITEM_IDS);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed : [];
-  } catch {
-    return [];
-  }
-}
-
-export function addDeletedItemIds(ids: string | string[]): void {
-  if (typeof window === 'undefined') return;
-  const list = Array.isArray(ids) ? ids : [ids];
-  if (list.length === 0) return;
-
-  const current = new Set(getDeletedItemIds());
-  for (const id of list) {
-    if (id) current.add(id);
-  }
-  const updated = Array.from(current);
-  try {
-    localStorage.setItem(PERSISTENT_STORAGE_KEYS.DELETED_ITEM_IDS, JSON.stringify(updated));
-  } catch {
-    // ignore
-  }
-  saveToIndexedDB(PERSISTENT_STORAGE_KEYS.DELETED_ITEM_IDS, updated).catch(() => {});
-}
-
-export function isItemDeleted(id: string): boolean {
-  if (!id || typeof window === 'undefined') return false;
-  const current = getDeletedItemIds();
-  return current.includes(id);
-}
-
-export function clearDeletedItemIds(): void {
-  if (typeof window === 'undefined') return;
-  localStorage.removeItem(PERSISTENT_STORAGE_KEYS.DELETED_ITEM_IDS);
-  saveToIndexedDB(PERSISTENT_STORAGE_KEYS.DELETED_ITEM_IDS, []).catch(() => {});
-}
-
 
 // Robust read from LocalStorage with error safety
 export function safeGetLocalStorage<T>(key: string, fallback: T): T {

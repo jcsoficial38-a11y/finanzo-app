@@ -42,24 +42,3 @@ export function removePin(): void {
 export function togglePinEnabled(enabled: boolean): void {
   localStorage.setItem(STORAGE_PIN_ENABLED_KEY, enabled ? 'true' : 'false');
 }
-
-export function getStoredPinData(): { pin: string | null; isEnabled: boolean } {
-  if (typeof window === 'undefined') {
-    return { pin: null, isEnabled: false };
-  }
-  const pin = localStorage.getItem(STORAGE_PIN_KEY);
-  const enabled = localStorage.getItem(STORAGE_PIN_ENABLED_KEY) === 'true';
-  return { pin, isEnabled: enabled && Boolean(pin) };
-}
-
-export function restorePinFromCloud(pin?: string | null, isEnabled?: boolean): void {
-  if (typeof window === 'undefined') return;
-  if (pin && /^\d{4}$/.test(pin)) {
-    localStorage.setItem(STORAGE_PIN_KEY, pin);
-    localStorage.setItem(STORAGE_PIN_ENABLED_KEY, isEnabled !== false ? 'true' : 'false');
-  } else if (pin === null || pin === '') {
-    localStorage.removeItem(STORAGE_PIN_KEY);
-    localStorage.setItem(STORAGE_PIN_ENABLED_KEY, 'false');
-  }
-}
-

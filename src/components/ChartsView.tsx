@@ -24,8 +24,8 @@ interface CategorySlice {
 }
 
 export const ChartsView: React.FC<ChartsViewProps> = ({
-  transactions = [],
-  categories = [],
+  transactions,
+  categories,
   summary,
 }) => {
   const { formatMoney } = useCurrencyVisibility();
@@ -33,7 +33,7 @@ export const ChartsView: React.FC<ChartsViewProps> = ({
 
   // Group expenses by category memoized for instant 60fps rendering
   const { slices, totalExpenses } = useMemo(() => {
-    const expenseTransactions = (transactions || []).filter((t) => t?.kind === 'expense');
+    const expenseTransactions = transactions.filter((t) => t.kind === 'expense');
     const categoryTotalsMap = new Map<string, number>();
     let total = 0;
 

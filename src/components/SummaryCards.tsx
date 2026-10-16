@@ -26,15 +26,15 @@ export const SummaryCards: React.FC<SummaryCardsProps> = ({
 }) => {
   const { formatMoney, hideValues } = useCurrencyVisibility();
   const {
-    budget = 0,
-    totalIncome = 0,
-    totalFixed = 0,
-    totalVariable = 0,
-    totalInstallment = 0,
-    totalExpenses = 0,
-    remainingBudget = 0,
-    netBalance = 0,
-  } = summary || {};
+    budget,
+    totalIncome,
+    totalFixed,
+    totalVariable,
+    totalInstallment,
+    totalExpenses,
+    remainingBudget,
+    netBalance,
+  } = summary;
 
   // Percentage of budget used
   const budgetUsagePercent = budget > 0 ? (totalExpenses / budget) * 100 : 0;

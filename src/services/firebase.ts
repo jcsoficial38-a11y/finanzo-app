@@ -1,37 +1,38 @@
 /**
  * =========================================================================================
- * BANCO DE DADOS NA NUVEM (FIREBASE FIRESTORE) - CÓDIGO DEFINITIVO
+ * CONFIGURAÇÃO DO BANCO DE DADOS NA NUVEM (FIREBASE FIRESTORE)
  * =========================================================================================
- * 1. Carregamento seguro e assíncrono em segundo plano (Zero tela branca).
- * 2. Persistência local obrigatória ('browserLocalPersistence').
- * 3. Deleção definitiva na nuvem com deleteDoc e tombstones anti-ressurgimento.
+ * Para conectar seu próprio projeto gratuito do Firebase:
+ * 1. Acesse https://console.firebase.google.com/ e crie ou selecione seu projeto.
+ * 2. Em "Configurações do Projeto" > "Geral", copie o objeto "firebaseConfig".
+ * 3. Você pode substituir os valores abaixo ou no arquivo /firebase-applet-config.json.
+ * 
+ * Este aplicativo já está configurado e funcional com o Firestore Enterprise / Spark.
  * =========================================================================================
  */
 
-import { initializeApp, getApps, getApp, FirebaseApp } from 'firebase/app';
+import { initializeApp, getApps, getApp } from 'firebase/app';
 import {
   getAuth,
-  setPersistence,
-  browserLocalPersistence,
   GoogleAuthProvider,
   signInWithPopup,
   signOut,
   onAuthStateChanged,
   User as FirebaseUser,
-  Auth,
 } from 'firebase/auth';
 import {
   getFirestore,
   doc,
+  getDocFromServer,
   collection,
   setDoc,
   getDoc,
   getDocs,
   deleteDoc,
+  onSnapshot,
   writeBatch,
-  Firestore,
 } from 'firebase/firestore';
-import appletConfig from '../../firebase-applet-config.json';
+import firebaseConfig from '../../firebase-applet-config.json';
 import {
   Transaction,
   Category,
@@ -39,91 +40,86 @@ import {
   RecurringExpenseRule,
 } from '../types/finance';
 
-// 2. INICIALIZAÇÃO SEGURA DO FIREBASE COM VALORES DE FALLBACK LOCAIS:
-const FALLBACK_FIREBASE_CONFIG = {
-  apiKey: "AIzaSyDLxKnZW-_9J8RAspiA7ul7gtE7F63wr_M",
-  authDomain: "finanzo-app-two.firebaseapp.com",
-  projectId: "impressive-superstate-csmzh",
-  storageBucket: "impressive-superstate-csmzh.appspot.com",
-  messagingSenderId: "1079469168199",
-  appId: "1:1079469168199:web:d58392f19152a1c698c362"
-};
+// Initialize Firebase App instance safely
+const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
 
-const USER_API_KEY = "COLE_AQUI_SUA_API_KEY";
-const RESOLVED_API_KEY = (!USER_API_KEY || USER_API_KEY.trim() === "" || USER_API_KEY.includes("COLE_AQUI"))
-  ? FALLBACK_FIREBASE_CONFIG.apiKey
-  : USER_API_KEY;
+// CRITICAL: getFirestore with database ID
+export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
+export const auth = getAuth(app);
+export const googleProvider = new GoogleAuthProvider();
 
-export const firebaseConfig = {
-  apiKey: RESOLVED_API_KEY || FALLBACK_FIREBASE_CONFIG.apiKey,
-  authDomain: "finanzo-app-two.firebaseapp.com",
-  projectId: "impressive-superstate-csmzh",
-  storageBucket: "impressive-superstate-csmzh.appspot.com",
-  messagingSenderId: "1079469168199",
-  appId: "1:1079469168199:web:d58392f19152a1c698c362"
-};
-
-// 1. TRATAMENTO DE ERROS E INICIALIZAÇÃO SEGURA (TRY / CATCH):
-let appInstance: FirebaseApp | null = null;
-let dbInstance: Firestore | null = null;
-let authInstance: Auth | null = null;
-let googleProviderInstance: GoogleAuthProvider | null = null;
-let isFirebaseAvailable = false;
-
-try {
-  if (!firebaseConfig.apiKey || firebaseConfig.apiKey.includes("COLE_AQUI")) {
-    console.warn('[Firebase] Chaves não configuradas. Operando 100% no Modo Local.');
-    isFirebaseAvailable = false;
-  } else {
-    appInstance = !getApps().length ? initializeApp(firebaseConfig) : getApp();
-
-    try {
-      dbInstance = getFirestore(appInstance);
-    } catch (errDb) {
-      console.warn('[Firestore] Inicialização em modo local:', errDb);
-      dbInstance = null;
-    }
-
-    try {
-      authInstance = getAuth(appInstance);
-      setPersistence(authInstance, browserLocalPersistence).catch(() => {});
-      try {
-        authInstance.useDeviceLanguage();
-      } catch {}
-      googleProviderInstance = new GoogleAuthProvider();
-      googleProviderInstance.setCustomParameters({ prompt: 'select_account' });
-    } catch (errAuth) {
-      console.warn('[FirebaseAuth] Inicialização em modo local:', errAuth);
-      authInstance = null;
-      googleProviderInstance = null;
-    }
-
-    isFirebaseAvailable = Boolean(appInstance && authInstance);
-  }
-} catch (e) {
-  console.warn('[Firebase] Operando 100% no Armazenamento Local Seguro:', e);
-  isFirebaseAvailable = false;
-  appInstance = null;
-  dbInstance = null;
-  authInstance = null;
-  googleProviderInstance = null;
+// Error Handling Infrastructure conforming to Skill
+export enum OperationType {
+  CREATE = 'create',
+  UPDATE = 'update',
+  DELETE = 'delete',
+  LIST = 'list',
+  GET = 'get',
+  WRITE = 'write',
 }
 
-export const app = appInstance;
-export const db = dbInstance;
-export const auth = authInstance;
-export const googleProvider = googleProviderInstance;
-export { isFirebaseAvailable };
+export interface FirestoreErrorInfo {
+  error: string;
+  operationType: OperationType;
+  path: string | null;
+  authInfo: {
+    userId?: string | null;
+    email?: string | null;
+    emailVerified?: boolean | null;
+    isAnonymous?: boolean | null;
+    tenantId?: string | null;
+    providerInfo?: {
+      providerId?: string | null;
+      email?: string | null;
+    }[];
+  };
+}
 
-// Google Sign-In Seguro
-export async function loginWithGoogle(): Promise<FirebaseUser | null> {
-  if (!authInstance || !googleProviderInstance) {
-    throw new Error('Serviço Google indisponível no momento. O aplicativo continua ativo no Modo Local.');
-  }
+export function handleFirestoreError(
+  error: unknown,
+  operationType: OperationType,
+  path: string | null
+): never {
+  const errInfo: FirestoreErrorInfo = {
+    error: error instanceof Error ? error.message : String(error),
+    authInfo: {
+      userId: auth.currentUser?.uid,
+      email: auth.currentUser?.email,
+      emailVerified: auth.currentUser?.emailVerified,
+      isAnonymous: auth.currentUser?.isAnonymous,
+      tenantId: auth.currentUser?.tenantId,
+      providerInfo:
+        auth.currentUser?.providerData?.map((p) => ({
+          providerId: p.providerId,
+          email: p.email,
+        })) || [],
+    },
+    operationType,
+    path,
+  };
+  console.error('[Firestore Error]:', JSON.stringify(errInfo));
+  throw new Error(JSON.stringify(errInfo));
+}
 
+// Test initial connection as required by Skill
+export async function testFirestoreConnection(): Promise<boolean> {
   try {
-    await setPersistence(authInstance, browserLocalPersistence).catch(() => {});
-    const result = await signInWithPopup(authInstance, googleProviderInstance);
+    await getDocFromServer(doc(db, 'test', 'connection'));
+    return true;
+  } catch (error) {
+    if (error instanceof Error && error.message.includes('the client is offline')) {
+      console.warn('[Firestore] O cliente está em modo offline ou conectando...');
+      return false;
+    }
+    return true;
+  }
+}
+testFirestoreConnection();
+
+// Google Sign-In with popup
+export async function loginWithGoogle(): Promise<FirebaseUser | null> {
+  try {
+    const result = await signInWithPopup(auth, googleProvider);
     return result.user;
   } catch (err: any) {
     console.error('[FirebaseAuth] Erro no login Google:', err);
@@ -131,53 +127,23 @@ export async function loginWithGoogle(): Promise<FirebaseUser | null> {
   }
 }
 
-// Desconectar Sessão
+// Sign-Out
 export async function logoutUser(): Promise<void> {
-  if (!authInstance) return;
   try {
-    await signOut(authInstance);
+    await signOut(auth);
   } catch (err) {
-    console.warn('[FirebaseAuth] Erro no logout:', err);
+    console.error('[FirebaseAuth] Erro no logout:', err);
   }
 }
 
-// Observador onAuthStateChanged para Reconhecimento Imediato
-export function subscribeToAuth(callback: (user: FirebaseUser | null) => void): () => void {
-  if (!authInstance) {
-    callback(null);
-    return () => {};
-  }
-  try {
-    return onAuthStateChanged(
-      authInstance,
-      (user) => {
-        callback(user);
-      },
-      (error) => {
-        console.warn('[FirebaseAuth] Erro observador de sessão:', error);
-        callback(null);
-      }
-    );
-  } catch (err) {
-    console.warn('[FirebaseAuth] Falha ao registrar observador:', err);
-    callback(null);
-    return () => {};
-  }
+// Subscribe to Auth changes
+export function subscribeToAuth(callback: (user: FirebaseUser | null) => void) {
+  return onAuthStateChanged(auth, callback);
 }
 
 // ==========================================
-// Estrutura de Sincronização e Lixeira Real
+// User Cloud Data Synchronization Services
 // ==========================================
-
-export interface UserSecurityCloudData {
-  pin?: string | null;
-  pinEnabled?: boolean;
-  biometricEnabled?: boolean;
-  biometricRegistered?: boolean;
-  biometricType?: string;
-  biometricDate?: string;
-  biometricCredentialId?: string | null;
-}
 
 export interface UserCloudData {
   transactions: Transaction[];
@@ -188,314 +154,185 @@ export interface UserCloudData {
   categoryBudgets: Record<string, number>;
   userProfile?: UserProfile;
   recurringRules: RecurringExpenseRule[];
-  security?: UserSecurityCloudData;
-  deletedItemIds?: string[];
 }
 
 /**
- * Sincroniza lançamentos, perfil e configurações no Firestore
+ * Save all transactions and settings to cloud for a specific user
  */
 export async function syncUserDataToCloud(userId: string, data: UserCloudData): Promise<void> {
-  if (!userId || !dbInstance) return;
+  if (!userId) return;
 
   try {
-    // 1. Documento Raiz do Usuário
-    const userDocRef = doc(dbInstance, 'users', userId);
-    await setDoc(
-      userDocRef,
-      {
-        userId,
-        name: data.userProfile?.name || 'Usuário',
-        managerName: data.userProfile?.managerName || data.userProfile?.name || 'Usuário',
-        login: data.userProfile?.login || '@usuario',
-        pixKey: data.userProfile?.pixKey || '',
-        avatarUrl: data.userProfile?.avatarUrl || '',
-        avatarColor: data.userProfile?.avatarColor || '#7dd3fc',
-        bio: data.userProfile?.bio || '',
-        joinedDate: data.userProfile?.joinedDate || 'Setembro 2026',
-        themeColor: data.userProfile?.themeColor || 'sky',
-        ...(data.security ? { security: data.security } : {}),
-        ...(data.deletedItemIds && data.deletedItemIds.length > 0 ? { deletedItemIds: data.deletedItemIds } : {}),
-        updatedAt: new Date().toISOString(),
-      },
-      { merge: true }
-    );
-
-    // Subcoleção de Perfil
+    // 1. Sync User Profile
     if (data.userProfile) {
-      const profileRef = doc(dbInstance, 'users', userId, 'profile', 'current');
+      const profileRef = doc(db, 'users', userId, 'profile', 'current');
       await setDoc(
         profileRef,
         {
           userId,
           name: data.userProfile.name,
-          managerName: data.userProfile.managerName || data.userProfile.name,
           login: data.userProfile.login,
-          pixKey: data.userProfile.pixKey || '',
           avatarUrl: data.userProfile.avatarUrl || '',
           avatarColor: data.userProfile.avatarColor || '#7dd3fc',
           bio: data.userProfile.bio || '',
           joinedDate: data.userProfile.joinedDate,
-          themeColor: data.userProfile.themeColor || 'sky',
           updatedAt: new Date().toISOString(),
         },
         { merge: true }
       );
     }
 
-    // 2. Orçamentos
-    const budgetRef = doc(dbInstance, 'users', userId, 'budgetConfig', 'current');
+    // 2. Sync Budget Settings
+    const budgetRef = doc(db, 'users', userId, 'budgetConfig', 'current');
     await setDoc(
       budgetRef,
       {
         userId,
-        budgets: data.budgets,
         defaultBudget: data.defaultBudget,
-        categoryBudgets: data.categoryBudgets,
+        budgets: data.budgets || {},
+        categoryBudgets: data.categoryBudgets || {},
         updatedAt: new Date().toISOString(),
       },
       { merge: true }
     );
 
-    // 3. Categorias
+    // 3. Batch sync categories
     const allCategories = [...data.incomeCategories, ...data.expenseCategories];
-    const catBatch = writeBatch(dbInstance);
-    for (const cat of allCategories) {
-      const catRef = doc(dbInstance, 'users', userId, 'categories', cat.id);
-      catBatch.set(catRef, { ...cat, userId }, { merge: true });
-    }
-    await catBatch.commit();
-
-    // 4. Lançamentos (em lotes)
-    const txChunks: Transaction[][] = [];
-    const chunkSize = 200;
-    for (let i = 0; i < data.transactions.length; i += chunkSize) {
-      txChunks.push(data.transactions.slice(i, i + chunkSize));
-    }
-
-    for (const chunk of txChunks) {
-      const txBatch = writeBatch(dbInstance);
-      for (const tx of chunk) {
-        const txRef = doc(dbInstance, 'users', userId, 'transactions', tx.id);
-        txBatch.set(txRef, { ...tx, userId }, { merge: true });
+    if (allCategories.length > 0) {
+      for (const cat of allCategories) {
+        const catRef = doc(db, 'users', userId, 'categories', cat.id);
+        await setDoc(
+          catRef,
+          {
+            id: cat.id,
+            userId,
+            name: cat.name,
+            type: cat.type,
+            iconName: cat.iconName || '',
+            color: cat.color || '',
+          },
+          { merge: true }
+        );
       }
-      await txBatch.commit();
     }
 
-    // 5. Regras Recorrentes
-    if (data.recurringRules.length > 0) {
-      const ruleBatch = writeBatch(dbInstance);
-      for (const rule of data.recurringRules) {
-        const ruleRef = doc(dbInstance, 'users', userId, 'recurringRules', rule.id);
-        ruleBatch.set(ruleRef, { ...rule, userId }, { merge: true });
-      }
-      await ruleBatch.commit();
+    // 4. Sync Transactions in batch
+    for (const tx of data.transactions) {
+      const txRef = doc(db, 'users', userId, 'transactions', tx.id);
+      await setDoc(
+        txRef,
+        {
+          ...tx,
+          userId,
+          createdAt: tx.createdAt || new Date().toISOString(),
+        },
+        { merge: true }
+      );
+    }
+
+    // 5. Sync Recurring Rules
+    for (const rule of data.recurringRules) {
+      const ruleRef = doc(db, 'users', userId, 'recurringRules', rule.id);
+      await setDoc(
+        ruleRef,
+        {
+          ...rule,
+          userId,
+        },
+        { merge: true }
+      );
     }
   } catch (error) {
-    console.warn('[Firestore Sync] Operação em segundo plano:', error);
+    handleFirestoreError(error, OperationType.WRITE, `users/${userId}`);
   }
 }
 
 /**
- * Busca dados da nuvem garantindo que itens apagados (deletedItemIds) nunca retornem
+ * Fetch all cloud data for a user
  */
 export async function fetchUserDataFromCloud(userId: string): Promise<UserCloudData | null> {
-  if (!userId || !dbInstance) return null;
+  if (!userId) return null;
 
   try {
-    const userDocRef = doc(dbInstance, 'users', userId);
-    const userDocSnap = await getDoc(userDocRef);
+    // 1. Fetch Profile
+    const profileSnap = await getDoc(doc(db, 'users', userId, 'profile', 'current'));
+    const profileData = profileSnap.exists() ? (profileSnap.data() as UserProfile) : undefined;
 
-    let security: UserSecurityCloudData | undefined = undefined;
-    let deletedItemIds: string[] = [];
-    let rootUserData: any = null;
-
-    if (userDocSnap.exists()) {
-      rootUserData = userDocSnap.data();
-      if (rootUserData.security) {
-        security = rootUserData.security as UserSecurityCloudData;
-      }
-      if (rootUserData.deletedItemIds && Array.isArray(rootUserData.deletedItemIds)) {
-        deletedItemIds = rootUserData.deletedItemIds;
-      }
-    }
-
-    const deletedSet = new Set(deletedItemIds);
-
-    // Perfil
-    const profileRef = doc(dbInstance, 'users', userId, 'profile', 'current');
-    const profileSnap = await getDoc(profileRef);
-    let userProfile: UserProfile | undefined = undefined;
-
-    if (profileSnap.exists()) {
-      userProfile = profileSnap.data() as UserProfile;
-    } else if (rootUserData?.name) {
-      userProfile = {
-        name: rootUserData.name,
-        managerName: rootUserData.managerName || rootUserData.name,
-        login: rootUserData.login || '@usuario',
-        pixKey: rootUserData.pixKey || '',
-        avatarUrl: rootUserData.avatarUrl || '',
-        avatarColor: rootUserData.avatarColor || '#7dd3fc',
-        bio: rootUserData.bio || '',
-        joinedDate: rootUserData.joinedDate || 'Setembro 2026',
-        themeColor: rootUserData.themeColor || 'sky',
-      };
-    }
-
-    // Orçamento
-    const budgetRef = doc(dbInstance, 'users', userId, 'budgetConfig', 'current');
-    const budgetSnap = await getDoc(budgetRef);
+    // 2. Fetch Budgets
+    const budgetSnap = await getDoc(doc(db, 'users', userId, 'budgetConfig', 'current'));
     const budgetConfig = budgetSnap.exists() ? budgetSnap.data() : null;
 
-    // Categorias (exclui permanentemente itens apagados)
-    const catSnaps = await getDocs(collection(dbInstance, 'users', userId, 'categories'));
+    // 3. Fetch Categories
+    const catSnaps = await getDocs(collection(db, 'users', userId, 'categories'));
     const fetchedCategories: Category[] = [];
     catSnaps.forEach((docSnap) => {
-      const c = docSnap.data() as Category;
-      if (!deletedSet.has(c.id)) {
-        fetchedCategories.push(c);
-      } else {
-        deleteDoc(docSnap.ref).catch(() => {});
-      }
+      fetchedCategories.push(docSnap.data() as Category);
     });
 
-    // Lançamentos (exclui permanentemente itens apagados)
-    const txSnaps = await getDocs(collection(dbInstance, 'users', userId, 'transactions'));
+    // 4. Fetch Transactions
+    const txSnaps = await getDocs(collection(db, 'users', userId, 'transactions'));
     const fetchedTransactions: Transaction[] = [];
     txSnaps.forEach((docSnap) => {
-      const t = docSnap.data() as Transaction;
-      if (!deletedSet.has(t.id)) {
-        fetchedTransactions.push(t);
-      } else {
-        deleteDoc(docSnap.ref).catch(() => {});
-      }
+      fetchedTransactions.push(docSnap.data() as Transaction);
     });
 
-    // Regras Recorrentes (exclui permanentemente itens apagados)
-    const ruleSnaps = await getDocs(collection(dbInstance, 'users', userId, 'recurringRules'));
+    // 5. Fetch Recurring Rules
+    const ruleSnaps = await getDocs(collection(db, 'users', userId, 'recurringRules'));
     const fetchedRules: RecurringExpenseRule[] = [];
     ruleSnaps.forEach((docSnap) => {
-      const r = docSnap.data() as RecurringExpenseRule;
-      if (!deletedSet.has(r.id)) {
-        fetchedRules.push(r);
-      } else {
-        deleteDoc(docSnap.ref).catch(() => {});
-      }
+      fetchedRules.push(docSnap.data() as RecurringExpenseRule);
     });
+
+    const incomeCategories = fetchedCategories.filter((c) => c.type === 'income');
+    const expenseCategories = fetchedCategories.filter((c) => c.type === 'expense');
 
     return {
       transactions: fetchedTransactions,
-      incomeCategories: fetchedCategories.filter((c) => c.type === 'income'),
-      expenseCategories: fetchedCategories.filter((c) => c.type === 'expense'),
+      incomeCategories,
+      expenseCategories,
       budgets: budgetConfig?.budgets || {},
       defaultBudget: budgetConfig?.defaultBudget ?? 3500,
       categoryBudgets: budgetConfig?.categoryBudgets || {},
-      userProfile,
+      userProfile: profileData,
       recurringRules: fetchedRules,
-      security,
-      deletedItemIds,
     };
   } catch (error) {
-    console.warn('[Firestore Fetch] Fallback para armazenamento local:', error);
-    return null;
+    handleFirestoreError(error, OperationType.GET, `users/${userId}`);
   }
 }
 
-// 3. EXCLUSÃO DEFINITIVA (LIXEIRA REAL COM deleteDoc):
-
 /**
- * Exclui lançamento da nuvem imediatamente
+ * Delete a transaction from the cloud
  */
 export async function deleteTransactionFromCloud(userId: string, transactionId: string): Promise<void> {
-  if (!userId || !transactionId || !dbInstance) return;
+  if (!userId || !transactionId) return;
   try {
-    const txRef = doc(dbInstance, 'users', userId, 'transactions', transactionId);
+    const txRef = doc(db, 'users', userId, 'transactions', transactionId);
     await deleteDoc(txRef);
   } catch (error) {
-    console.warn('[Firestore deleteDoc] Erro ao excluir transação:', error);
+    handleFirestoreError(error, OperationType.DELETE, `users/${userId}/transactions/${transactionId}`);
   }
 }
 
 /**
- * Exclui categoria da nuvem imediatamente
- */
-export async function deleteCategoryFromCloud(userId: string, categoryId: string): Promise<void> {
-  if (!userId || !categoryId || !dbInstance) return;
-  try {
-    const catRef = doc(dbInstance, 'users', userId, 'categories', categoryId);
-    await deleteDoc(catRef);
-  } catch (error) {
-    console.warn('[Firestore deleteDoc] Erro ao excluir categoria:', error);
-  }
-}
-
-/**
- * Exclui regra recorrente da nuvem imediatamente
- */
-export async function deleteRecurringRuleFromCloud(userId: string, ruleId: string): Promise<void> {
-  if (!userId || !ruleId || !dbInstance) return;
-  try {
-    const ruleRef = doc(dbInstance, 'users', userId, 'recurringRules', ruleId);
-    await deleteDoc(ruleRef);
-  } catch (error) {
-    console.warn('[Firestore deleteDoc] Erro ao excluir regra:', error);
-  }
-}
-
-/**
- * Salva perfil e credenciais de segurança diretamente em users/{userId}
- */
-export async function saveProfileAndSecurityToCloud(
-  userId: string,
-  profile: UserProfile,
-  security?: UserSecurityCloudData
-): Promise<void> {
-  if (!userId || !dbInstance) return;
-  try {
-    const userDocRef = doc(dbInstance, 'users', userId);
-    await setDoc(
-      userDocRef,
-      {
-        userId,
-        name: profile.name,
-        managerName: profile.managerName || profile.name,
-        login: profile.login,
-        pixKey: profile.pixKey || '',
-        avatarUrl: profile.avatarUrl || '',
-        avatarColor: profile.avatarColor || '#7dd3fc',
-        bio: profile.bio || '',
-        joinedDate: profile.joinedDate,
-        themeColor: profile.themeColor || 'sky',
-        ...(security ? { security } : {}),
-        updatedAt: new Date().toISOString(),
-      },
-      { merge: true }
-    );
-  } catch (error) {
-    console.warn('[Firestore Profile] Erro ao salvar perfil:', error);
-  }
-}
-
-/**
- * Zera todas as transações na nuvem para o usuário
+ * Clear all transactions in cloud for user
  */
 export async function clearAllTransactionsFromCloud(userId: string): Promise<void> {
-  if (!userId || !dbInstance) return;
+  if (!userId) return;
   try {
-    const txSnaps = await getDocs(collection(dbInstance, 'users', userId, 'transactions'));
-    const batch = writeBatch(dbInstance);
+    const txSnaps = await getDocs(collection(db, 'users', userId, 'transactions'));
+    const batch = writeBatch(db);
     txSnaps.forEach((docSnap) => {
       batch.delete(docSnap.ref);
     });
 
-    const ruleSnaps = await getDocs(collection(dbInstance, 'users', userId, 'recurringRules'));
+    const ruleSnaps = await getDocs(collection(db, 'users', userId, 'recurringRules'));
     ruleSnaps.forEach((docSnap) => {
       batch.delete(docSnap.ref);
     });
 
     await batch.commit();
   } catch (error) {
-    console.warn('[Firestore Clear] Erro ao zerar histórico:', error);
+    handleFirestoreError(error, OperationType.DELETE, `users/${userId}/transactions`);
   }
 }
