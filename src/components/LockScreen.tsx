@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Lock, Delete, AlertCircle, Fingerprint } from 'lucide-react';
+import { Lock, Delete, AlertCircle, Fingerprint, X } from 'lucide-react';
 import { UserProfile } from '../types/finance';
 import { verifyPin, removePin, getPinStatus } from '../utils/pinSecurity';
 import {
@@ -100,6 +100,15 @@ export const LockScreen: React.FC<LockScreenProps> = ({ onUnlock, profile }) => 
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900 text-white p-4 select-none">
+      <button
+        type="button"
+        onClick={onUnlock}
+        title="Fechar e acessar o aplicativo"
+        aria-label="Acessar aplicativo"
+        className="absolute top-4 right-4 p-2 text-slate-400 hover:text-white rounded-full hover:bg-slate-800 transition-colors cursor-pointer"
+      >
+        <X className="w-5 h-5" />
+      </button>
       <div className="w-full max-w-xs flex flex-col items-center space-y-5">
         {/* User avatar & lock/biometric badge */}
         <div className="relative">

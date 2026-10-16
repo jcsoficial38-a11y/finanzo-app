@@ -897,13 +897,13 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
                           : 'bg-slate-200 text-slate-700'
                       }`}
                     >
-                      {authUser ? 'Sincronizado Online' : 'Armazenamento Local'}
+                      {authUser ? 'Sincronizado Online' : 'Modo Offline'}
                     </span>
                   </h4>
                   <p className="text-[11px] text-sky-700 leading-tight">
                     {authUser
                       ? `Conectado como ${authUser.displayName || authUser.email}`
-                      : 'Sincronize com o Firestore para acessar de qualquer celular ou PC'}
+                      : 'Operando localmente. Conecte com o Google para backup em tempo real.'}
                   </p>
                 </div>
               </div>

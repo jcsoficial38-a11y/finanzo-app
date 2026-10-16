@@ -75,12 +75,8 @@ export default function App() {
   const [isCategoryModalOpen, setIsCategoryModalOpen] = useState(false);
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
 
-  // 4-Digit PIN & Biometric Lock State
-  const [isLocked, setIsLocked] = useState<boolean>(() => {
-    const pin = getPinStatus();
-    const bio = getBiometricStatus();
-    return (pin.isEnabled && pin.hasPin) || (bio.isEnabled && bio.hasKey);
-  });
+  // 4-Digit PIN & Biometric Lock State (Garante navegação 100% liberada na abertura)
+  const [isLocked, setIsLocked] = useState<boolean>(false);
 
   // Combine income and expense categories for lookup
   const allCategories = [...incomeCategories, ...expenseCategories];
