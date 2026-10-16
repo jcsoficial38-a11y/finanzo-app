@@ -39,17 +39,25 @@ export function getShortMonthName(monthNumber: number): string {
   return MONTH_NAMES_SHORT[idx];
 }
 
-export function formatMonthYearLabel(monthKey: string): string {
+export function formatMonthYearLabel(monthKey?: string): string {
+  if (!monthKey || typeof monthKey !== 'string' || !monthKey.includes('-')) {
+    const now = new Date();
+    return `${getMonthName(now.getMonth() + 1)} ${now.getFullYear()}`;
+  }
   const [yearStr, monthStr] = monthKey.split('-');
-  const year = parseInt(yearStr, 10);
-  const month = parseInt(monthStr, 10);
+  const year = parseInt(yearStr, 10) || new Date().getFullYear();
+  const month = parseInt(monthStr, 10) || (new Date().getMonth() + 1);
   return `${getMonthName(month)} ${year}`;
 }
 
-export function formatShortMonthYearLabel(monthKey: string): string {
+export function formatShortMonthYearLabel(monthKey?: string): string {
+  if (!monthKey || typeof monthKey !== 'string' || !monthKey.includes('-')) {
+    const now = new Date();
+    return `${getShortMonthName(now.getMonth() + 1)}/${now.getFullYear().toString().slice(-2)}`;
+  }
   const [yearStr, monthStr] = monthKey.split('-');
-  const year = parseInt(yearStr, 10);
-  const month = parseInt(monthStr, 10);
+  const year = parseInt(yearStr, 10) || new Date().getFullYear();
+  const month = parseInt(monthStr, 10) || (new Date().getMonth() + 1);
   return `${getShortMonthName(month)}/${year.toString().slice(-2)}`;
 }
 

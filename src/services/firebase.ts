@@ -39,14 +39,23 @@ import {
   RecurringExpenseRule,
 } from '../types/finance';
 
-// 4. CONFIGURAÇÃO REAL DO FIREBASE
+// 2. INICIALIZAÇÃO SEGURA DO FIREBASE COM VALORES DE FALLBACK LOCAIS:
+const FALLBACK_FIREBASE_CONFIG = {
+  apiKey: "AIzaSyDLxKnZW-_9J8RAspiA7ul7gtE7F63wr_M",
+  authDomain: "finanzo-app-two.firebaseapp.com",
+  projectId: "impressive-superstate-csmzh",
+  storageBucket: "impressive-superstate-csmzh.appspot.com",
+  messagingSenderId: "1079469168199",
+  appId: "1:1079469168199:web:d58392f19152a1c698c362"
+};
+
 const USER_API_KEY = "COLE_AQUI_SUA_API_KEY";
-const REAL_API_KEY = (!USER_API_KEY || USER_API_KEY.includes("COLE_AQUI"))
-  ? "AIzaSyDLxKnZW-_9J8RAspiA7ul7gtE7F63wr_M"
+const RESOLVED_API_KEY = (!USER_API_KEY || USER_API_KEY.trim() === "" || USER_API_KEY.includes("COLE_AQUI"))
+  ? FALLBACK_FIREBASE_CONFIG.apiKey
   : USER_API_KEY;
 
 export const firebaseConfig = {
-  apiKey: REAL_API_KEY,
+  apiKey: RESOLVED_API_KEY || FALLBACK_FIREBASE_CONFIG.apiKey,
   authDomain: "finanzo-app-two.firebaseapp.com",
   projectId: "impressive-superstate-csmzh",
   storageBucket: "impressive-superstate-csmzh.appspot.com",
@@ -62,39 +71,37 @@ let googleProviderInstance: GoogleAuthProvider | null = null;
 let isFirebaseAvailable = false;
 
 try {
-  appInstance = !getApps().length ? initializeApp(firebaseConfig) : getApp();
+  if (!firebaseConfig.apiKey || firebaseConfig.apiKey.includes("COLE_AQUI")) {
+    console.warn('[Firebase] Chaves não configuradas. Operando 100% no Modo Local.');
+    isFirebaseAvailable = false;
+  } else {
+    appInstance = !getApps().length ? initializeApp(firebaseConfig) : getApp();
 
-  const databaseId =
-    (appletConfig as any)?.firestoreDatabaseId && (appletConfig as any).firestoreDatabaseId !== '(default)'
-      ? (appletConfig as any).firestoreDatabaseId
-      : undefined;
+    try {
+      dbInstance = getFirestore(appInstance);
+    } catch (errDb) {
+      console.warn('[Firestore] Inicialização em modo local:', errDb);
+      dbInstance = null;
+    }
 
-  dbInstance = databaseId ? getFirestore(appInstance, databaseId) : getFirestore(appInstance);
-  authInstance = getAuth(appInstance);
+    try {
+      authInstance = getAuth(appInstance);
+      setPersistence(authInstance, browserLocalPersistence).catch(() => {});
+      try {
+        authInstance.useDeviceLanguage();
+      } catch {}
+      googleProviderInstance = new GoogleAuthProvider();
+      googleProviderInstance.setCustomParameters({ prompt: 'select_account' });
+    } catch (errAuth) {
+      console.warn('[FirebaseAuth] Inicialização em modo local:', errAuth);
+      authInstance = null;
+      googleProviderInstance = null;
+    }
 
-  // 2. PERSISTÊNCIA LOCAL PERMANENTE:
-  try {
-    setPersistence(authInstance, browserLocalPersistence).catch((err) => {
-      console.warn('[FirebaseAuth] Persistência local configurada em segundo plano:', err);
-    });
-  } catch (persistErr) {
-    console.warn('[FirebaseAuth] Aviso persistência:', persistErr);
+    isFirebaseAvailable = Boolean(appInstance && authInstance);
   }
-
-  try {
-    authInstance.useDeviceLanguage();
-  } catch {
-    // Ignora em ambientes sem navigator
-  }
-
-  googleProviderInstance = new GoogleAuthProvider();
-  googleProviderInstance.setCustomParameters({
-    prompt: 'select_account',
-  });
-
-  isFirebaseAvailable = true;
 } catch (e) {
-  console.error('[Firebase] Inicialização operando em modo offline:', e);
+  console.warn('[Firebase] Operando 100% no Armazenamento Local Seguro:', e);
   isFirebaseAvailable = false;
   appInstance = null;
   dbInstance = null;
