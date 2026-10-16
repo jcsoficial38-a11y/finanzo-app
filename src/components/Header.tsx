@@ -4,7 +4,6 @@ import {
   ChevronRight,
   Calendar,
   SlidersHorizontal,
-  User,
   Eye,
   EyeOff,
 } from 'lucide-react';
@@ -13,6 +12,7 @@ import { MonthSelectorModal } from './MonthSelectorModal';
 import { UserProfile } from '../types/finance';
 import { useCurrencyVisibility } from '../context/CurrencyVisibilityContext';
 import { useAppTheme } from '../context/ThemeContext';
+import { useUserProfile } from '../hooks/useUserProfile';
 
 interface HeaderProps {
   currentMonthKey: string;
@@ -40,34 +40,39 @@ export const Header: React.FC<HeaderProps> = ({
   const { theme } = useAppTheme();
   const [isMonthModalOpen, setIsMonthModalOpen] = useState(false);
 
+  // Centralized hook reading directly from localStorage and reactive to any updates
+  const {
+    name,
+    initials,
+    avatarUrl,
+    avatarColor,
+    login,
+  } = useUserProfile(profile);
+
   const formattedMonth = formatMonthYearLabel(currentMonthKey);
   const isActualMonth = currentMonthKey === getCurrentMonthKey();
-
-  const getInitials = (fullName: string) => {
-    const parts = fullName.trim().split(' ').filter(Boolean);
-    if (parts.length >= 2) {
-      return (parts[0][0] + parts[1][0]).toUpperCase();
-    }
-    return fullName.slice(0, 2).toUpperCase() || 'FP';
-  };
 
   return (
     <>
       <header className="sticky top-0 z-30 bg-white/95 backdrop-blur-md border-b border-slate-100/80 px-4 pt-safe pb-2">
-        {/* Top Brand row */}
-        <div className="flex items-center justify-between h-11">
-          <div className="flex items-center gap-2">
+        {/* Top Brand & Profile row */}
+        <div className="flex items-center justify-between h-11 gap-2">
+          {/* Brand Left */}
+          <div className="flex items-center gap-2 min-w-0">
             <div
-              className={`w-7 h-7 rounded-xl bg-gradient-to-tr ${theme.badgeGradient} flex items-center justify-center ${theme.badgeTextColor} text-xs font-bold shadow-xs`}
+              className={`w-7 h-7 rounded-xl bg-gradient-to-tr ${theme.badgeGradient} flex items-center justify-center ${theme.badgeTextColor} text-xs font-bold shadow-xs shrink-0`}
             >
               FP
             </div>
-            <h1 className="font-semibold text-slate-800 text-sm tracking-tight">
-              Finanças Pessoais
-            </h1>
+            <div className="flex flex-col min-w-0">
+              <h1 className="font-semibold text-slate-800 text-sm tracking-tight truncate leading-tight">
+                Finanças Pessoais
+              </h1>
+            </div>
           </div>
 
-          <div className="flex items-center gap-1.5">
+          {/* Action Tools & User Profile Right */}
+          <div className="flex items-center gap-1.5 shrink-0">
             {/* Toggle Hide/Show Values Button */}
             <button
               type="button"
@@ -93,6 +98,7 @@ export const Header: React.FC<HeaderProps> = ({
               )}
             </button>
 
+            {/* Budget Button */}
             <button
               onClick={onOpenBudgetModal}
               title="Definir Orçamento do Mês"
@@ -102,33 +108,51 @@ export const Header: React.FC<HeaderProps> = ({
               <span className="hidden xs:inline">Orçamento</span>
             </button>
 
-            {/* Profile Avatar Trigger Button */}
-            <div className="relative">
-              <button
-                onClick={onOpenProfileModal}
-                title={`Perfil: ${profile.name} (${profile.login})${isCloudConnected ? ' • Sincronizado na Nuvem' : ''}`}
-                className="w-8 h-8 rounded-full flex items-center justify-center overflow-hidden border border-slate-200 hover:border-slate-400 transition-all shadow-2xs active:scale-95"
-                style={{ backgroundColor: profile.avatarUrl ? 'transparent' : profile.avatarColor || '#7dd3fc' }}
-              >
-                {profile.avatarUrl ? (
-                  <img
-                    src={profile.avatarUrl}
-                    alt={profile.name}
-                    className="w-full h-full object-cover"
+            {/* Profile Avatar & Name Trigger Button */}
+            <button
+              type="button"
+              onClick={onOpenProfileModal}
+              title={`Perfil: ${name} (${login})${isCloudConnected ? ' • Sincronizado na Nuvem' : ''}`}
+              aria-label={`Abrir perfil de ${name}`}
+              className="flex items-center gap-1.5 p-1 rounded-2xl hover:bg-slate-100/90 active:bg-slate-200/70 border border-slate-200/80 transition-all shadow-2xs active:scale-95 cursor-pointer bg-white group"
+            >
+              <div className="relative shrink-0">
+                <div
+                  className="w-8 h-8 rounded-full flex items-center justify-center overflow-hidden border border-slate-200 shadow-2xs"
+                  style={{
+                    backgroundColor: avatarUrl ? 'transparent' : (avatarColor || '#7dd3fc'),
+                  }}
+                >
+                  {avatarUrl ? (
+                    <img
+                      src={avatarUrl}
+                      alt={name}
+                      className="w-full h-full object-cover"
+                    />
+                  ) : (
+                    <span className="text-[11px] font-bold text-slate-800 tracking-tight">
+                      {initials}
+                    </span>
+                  )}
+                </div>
+                {isCloudConnected && (
+                  <span
+                    title="Sincronizado na Nuvem (Firestore)"
+                    className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 bg-emerald-500 border-2 border-white rounded-full shadow-2xs"
                   />
-                ) : (
-                  <span className="text-[11px] font-bold text-slate-800">
-                    {getInitials(profile.name)}
-                  </span>
                 )}
-              </button>
-              {isCloudConnected && (
-                <span
-                  title="Sincronizado na Nuvem (Firestore)"
-                  className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 bg-emerald-500 border-2 border-white rounded-full shadow-2xs"
-                />
-              )}
-            </div>
+              </div>
+
+              {/* Real user name in the main header */}
+              <div className="hidden xs:flex flex-col text-left pr-1 leading-tight max-w-[85px] sm:max-w-[120px]">
+                <span className="text-[11px] font-bold text-slate-800 truncate">
+                  {name}
+                </span>
+                <span className="text-[9px] text-slate-400 truncate">
+                  {login}
+                </span>
+              </div>
+            </button>
           </div>
         </div>
 

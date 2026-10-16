@@ -7,6 +7,7 @@ import {
   authenticateBiometric,
   removeBiometric,
 } from '../utils/biometricSecurity';
+import { calculateInitials } from '../utils/userProfileManager';
 
 interface LockScreenProps {
   onUnlock: () => void;
@@ -118,8 +119,8 @@ export const LockScreen: React.FC<LockScreenProps> = ({ onUnlock, profile }) => 
                 className="w-full h-full object-cover"
               />
             ) : (
-              <span className="text-xl font-bold text-white">
-                {profile.name.slice(0, 2).toUpperCase()}
+              <span className="text-xl font-bold text-white tracking-wider">
+                {calculateInitials(profile.name)}
               </span>
             )}
           </div>

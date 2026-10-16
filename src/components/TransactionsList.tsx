@@ -51,8 +51,8 @@ interface TransactionsListProps {
 type FilterKind = 'all' | 'income' | 'expense' | 'fixed' | 'variable' | 'installment';
 
 export const TransactionsList: React.FC<TransactionsListProps> = ({
-  transactions,
-  categories,
+  transactions = [],
+  categories = [],
   onDeleteTransaction,
   onUpdateTransaction,
   onOpenAddModal,
@@ -78,13 +78,15 @@ export const TransactionsList: React.FC<TransactionsListProps> = ({
   const [editApplyToFuture, setEditApplyToFuture] = useState(false);
 
   const categoriesMap = useMemo(() => {
-    return new Map(categories.map((c) => [c.id, c]));
+    return new Map((categories || []).map((c) => [c.id, c]));
   }, [categories]);
 
   const categoryCounts = useMemo(() => {
     const counts = new Map<string, number>();
-    for (const t of transactions) {
-      counts.set(t.categoryId, (counts.get(t.categoryId) || 0) + 1);
+    for (const t of (transactions || [])) {
+      if (t?.categoryId) {
+        counts.set(t.categoryId, (counts.get(t.categoryId) || 0) + 1);
+      }
     }
     return counts;
   }, [transactions]);
@@ -161,22 +163,47 @@ export const TransactionsList: React.FC<TransactionsListProps> = ({
     return filteredTransactions.slice(start, start + pageSize);
   }, [filteredTransactions, currentPage, pageSize]);
 
+  const [deleteSuccessToast, setDeleteSuccessToast] = useState<string | null>(null);
+
   const confirmDelete = (deleteAllInstallments: boolean) => {
     if (deleteTarget) {
+      const name = deleteTarget.name;
       onDeleteTransaction(deleteTarget.id, { deleteAllInstallments });
       setDeleteTarget(null);
+      setDeleteSuccessToast(`"${name}" - Item removido da nuvem e do dispositivo com sucesso!`);
+      setTimeout(() => setDeleteSuccessToast(null), 4000);
     }
   };
 
   const confirmDeleteRecurring = (mode: 'single' | 'future') => {
     if (deleteTarget) {
+      const name = deleteTarget.name;
       onDeleteTransaction(deleteTarget.id, { deleteRecurringMode: mode });
       setDeleteTarget(null);
+      setDeleteSuccessToast(`"${name}" - Item removido da nuvem e do dispositivo com sucesso!`);
+      setTimeout(() => setDeleteSuccessToast(null), 4000);
     }
   };
 
   return (
     <div className="space-y-3">
+      {/* Confirmação visual clara de remoção real */}
+      {deleteSuccessToast && (
+        <div className="p-3 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-2xl text-xs font-semibold flex items-center justify-between shadow-xs animate-in fade-in slide-in-from-top-1 duration-200">
+          <div className="flex items-center gap-2">
+            <div className="w-6 h-6 rounded-lg bg-emerald-600 text-white flex items-center justify-center shrink-0">
+              <Check className="w-3.5 h-3.5" />
+            </div>
+            <span>{deleteSuccessToast}</span>
+          </div>
+          <button
+            onClick={() => setDeleteSuccessToast(null)}
+            className="text-emerald-500 hover:text-emerald-800 p-1"
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      )}
       {/* Search & Filter Header */}
       <div className="bg-white p-3 rounded-3xl border border-slate-200/70 shadow-xs space-y-2.5">
         {/* Search input and Export CSV button */}
@@ -477,9 +504,9 @@ export const TransactionsList: React.FC<TransactionsListProps> = ({
 
                   <button
                     onClick={() => setDeleteTarget(tx)}
-                    title="Excluir lançamento"
+                    title="Excluir lançamento (Remover da nuvem e do dispositivo)"
                     aria-label={`Excluir ${tx.name}`}
-                    className="w-7 h-7 rounded-lg flex items-center justify-center text-slate-300 hover:text-rose-600 hover:bg-rose-50 transition-colors"
+                    className="w-7 h-7 rounded-lg flex items-center justify-center text-rose-500 hover:text-rose-700 bg-rose-50/80 hover:bg-rose-100 transition-colors cursor-pointer shadow-2xs"
                   >
                     <Trash2 className="w-3.5 h-3.5" />
                   </button>
@@ -543,6 +570,9 @@ export const TransactionsList: React.FC<TransactionsListProps> = ({
                 <p className="text-xs text-slate-500 mt-0.5">
                   Deseja excluir "{deleteTarget.name}" ({formatMoney(deleteTarget.amount)})?
                 </p>
+                <p className="text-[11px] text-rose-600 font-semibold mt-1">
+                  Item será removido definitivamente da nuvem (Firestore) e deste dispositivo.
+                </p>
               </div>
             </div>
 
@@ -558,12 +588,12 @@ export const TransactionsList: React.FC<TransactionsListProps> = ({
                     onClick={() => confirmDeleteRecurring('single')}
                     className="w-full py-2.5 px-4 text-xs font-semibold text-rose-700 bg-rose-50 hover:bg-rose-100 rounded-xl transition-colors text-center"
                   >
-                    Excluir apenas deste mês
+                    Excluir apenas deste mês (Nuvem e Dispositivo)
                   </button>
                   <button
                     type="button"
                     onClick={() => confirmDeleteRecurring('future')}
-                    className="w-full py-2.5 px-4 text-xs font-semibold text-white bg-rose-600 hover:bg-rose-700 rounded-xl transition-colors text-center"
+                    className="w-full py-2.5 px-4 text-xs font-semibold text-white bg-rose-600 hover:bg-rose-700 rounded-xl transition-colors text-center shadow-xs"
                   >
                     Excluir deste e de todos os meses futuros
                   </button>
@@ -591,9 +621,9 @@ export const TransactionsList: React.FC<TransactionsListProps> = ({
                   </button>
                   <button
                     onClick={() => confirmDelete(true)}
-                    className="w-full py-2.5 px-4 text-xs font-semibold text-white bg-rose-600 hover:bg-rose-700 rounded-xl transition-colors text-center"
+                    className="w-full py-2.5 px-4 text-xs font-semibold text-white bg-rose-600 hover:bg-rose-700 rounded-xl transition-colors text-center shadow-xs"
                   >
-                    Excluir todas as parcelas deste parcelamento
+                    Excluir todas as parcelas da Nuvem e Dispositivo
                   </button>
                   <button
                     onClick={() => setDeleteTarget(null)}
@@ -613,10 +643,10 @@ export const TransactionsList: React.FC<TransactionsListProps> = ({
                 </button>
                 <button
                   onClick={() => confirmDelete(false)}
-                  className="flex-1 py-2.5 text-xs font-semibold text-white bg-rose-600 hover:bg-rose-700 rounded-xl transition-colors flex items-center justify-center gap-1.5"
+                  className="flex-1 py-2.5 text-xs font-semibold text-white bg-rose-600 hover:bg-rose-700 rounded-xl transition-colors flex items-center justify-center gap-1.5 shadow-xs"
                 >
                   <Trash2 className="w-4 h-4" />
-                  Excluir
+                  <span>Excluir Definitivamente</span>
                 </button>
               </div>
             )}

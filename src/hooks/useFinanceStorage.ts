@@ -41,17 +41,15 @@ import {
   clearAllTransactionsFromCloud,
 } from '../services/firebase';
 import type { User as FirebaseUser } from 'firebase/auth';
+import {
+  getStoredUserProfile,
+  saveStoredUserProfile,
+  PROFILE_UPDATE_EVENT,
+  DEFAULT_USER_PROFILE,
+} from '../utils/userProfileManager';
 
 const DEFAULT_MONTHLY_BUDGET = 3500.0;
 
-const DEFAULT_USER_PROFILE: UserProfile = {
-  name: 'Usuário',
-  login: '@usuario',
-  avatarUrl: '',
-  avatarColor: '#7dd3fc',
-  bio: '',
-  joinedDate: 'Setembro 2026',
-};
 
 const LEGACY_CAT_MAPPING: Record<string, string> = {
   'exp-transporte': 'exp-carro',
@@ -150,13 +148,7 @@ export function useFinanceStorage() {
 
   // User Profile
   const [userProfile, setUserProfile] = useState<UserProfile>(() => {
-    const stored = safeGetLocalStorage<UserProfile | null>(PERSISTENT_STORAGE_KEYS.USER_PROFILE, null);
-    if (stored && typeof stored === 'object' && stored.name) {
-      return stored;
-    }
-    const backup = getMasterSnapshot();
-    if (backup?.userProfile?.name) return backup.userProfile;
-    return DEFAULT_USER_PROFILE;
+    return getStoredUserProfile();
   });
 
   // Recurring Fixed Expenses Rules
@@ -212,7 +204,24 @@ export function useFinanceStorage() {
 
         const dbProfile = await getFromIndexedDB<UserProfile>(PERSISTENT_STORAGE_KEYS.USER_PROFILE);
         if (dbProfile && dbProfile.name) {
-          setUserProfile(dbProfile);
+          const isGeneric =
+            dbProfile.name.trim().toLowerCase() === 'usuário' ||
+            dbProfile.name.trim().toLowerCase() === 'usuario';
+          if (!isGeneric || dbProfile.avatarUrl) {
+            setUserProfile((prev) => {
+              const isPrevGeneric =
+                !prev.name ||
+                prev.name.trim().toLowerCase() === 'usuário' ||
+                prev.name.trim().toLowerCase() === 'usuario';
+              if (!isPrevGeneric && isGeneric) {
+                return {
+                  ...prev,
+                  avatarUrl: prev.avatarUrl || dbProfile.avatarUrl || '',
+                };
+              }
+              return dbProfile;
+            });
+          }
         }
 
         const dbExpCats = await getFromIndexedDB<Category[]>(PERSISTENT_STORAGE_KEYS.EXPENSE_CATS);

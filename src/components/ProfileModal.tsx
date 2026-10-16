@@ -44,6 +44,10 @@ import {
   removeBiometric,
   BiometricStatus,
 } from '../utils/biometricSecurity';
+import {
+  calculateInitials,
+  saveStoredUserProfile,
+} from '../utils/userProfileManager';
 
 interface ProfileModalProps {
   isOpen: boolean;
@@ -78,13 +82,24 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
   onLogoutGoogle,
   onSyncNow,
 }) => {
-  const [name, setName] = useState(profile.name);
-  const [login, setLogin] = useState(profile.login);
+  const [name, setName] = useState(profile.name || 'JC');
+  const [login, setLogin] = useState(profile.login || '@jc');
   const [bio, setBio] = useState(profile.bio || '');
   const [avatarUrl, setAvatarUrl] = useState(profile.avatarUrl || '');
   const [avatarColor, setAvatarColor] = useState(profile.avatarColor || '#7dd3fc');
   const [savedSuccess, setSavedSuccess] = useState(false);
   const { themeId, setTheme } = useAppTheme();
+
+  // Keep modal fields updated whenever profile changes or modal opens
+  React.useEffect(() => {
+    if (isOpen) {
+      setName(profile.name || 'JC');
+      setLogin(profile.login || '@jc');
+      setBio(profile.bio || '');
+      setAvatarUrl(profile.avatarUrl || '');
+      setAvatarColor(profile.avatarColor || '#7dd3fc');
+    }
+  }, [isOpen, profile]);
 
   // 4-Digit PIN Security State
   const [pinStatus, setPinStatus] = useState<PinStatus>(() => getPinStatus());
@@ -243,7 +258,18 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
       const reader = new FileReader();
       reader.onloadend = () => {
         if (typeof reader.result === 'string') {
-          setAvatarUrl(reader.result);
+          const photoResult = reader.result;
+          setAvatarUrl(photoResult);
+          const updated: UserProfile = {
+            ...profile,
+            name: name.trim() || profile.name || 'JC',
+            login: login.trim() || profile.login || '@jc',
+            bio: bio.trim(),
+            avatarUrl: photoResult,
+            avatarColor,
+          };
+          saveStoredUserProfile(updated);
+          onUpdateProfile(updated);
         }
       };
       reader.readAsDataURL(file);
@@ -255,34 +281,44 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
+    const updated: UserProfile = {
+      ...profile,
+      name: name.trim() || profile.name || 'JC',
+      login: login.trim() || profile.login || '@jc',
+      bio: bio.trim(),
+      avatarUrl: '',
+      avatarColor,
+    };
+    saveStoredUserProfile(updated);
+    onUpdateProfile(updated);
   };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim()) return;
 
-    onUpdateProfile({
+    const updated: UserProfile = {
+      ...profile,
       name: name.trim(),
       login: login.trim(),
       bio: bio.trim(),
       avatarUrl,
       avatarColor,
-    });
+    };
+
+    saveStoredUserProfile(updated);
+    onUpdateProfile(updated);
 
     setSavedSuccess(true);
     setTimeout(() => {
       setSavedSuccess(false);
       onClose();
-    }, 800);
+    }, 700);
   };
 
   // User initials for fallback avatar
   const getInitials = (fullName: string) => {
-    const parts = fullName.trim().split(' ').filter(Boolean);
-    if (parts.length >= 2) {
-      return (parts[0][0] + parts[1][0]).toUpperCase();
-    }
-    return fullName.slice(0, 2).toUpperCase() || 'FP';
+    return calculateInitials(fullName);
   };
 
   return (
