@@ -53,13 +53,23 @@ export const Header: React.FC<HeaderProps> = ({
 
   // 3. PERFIL E FOTO SEGUROS:
   // Recupera a foto e o nome do perfil do 'localStorage' após o carregamento seguro da página
-  const [isMounted, setIsMounted] = useState(false);
-  const [cachedName, setCachedName] = useState<string | null>(null);
-  const [cachedPhoto, setCachedPhoto] = useState<string | null>(null);
+  const [cachedName, setCachedName] = useState<string | null>(() => {
+    try {
+      return typeof window !== 'undefined' ? localStorage.getItem('userName') : null;
+    } catch {
+      return null;
+    }
+  });
+  const [cachedPhoto, setCachedPhoto] = useState<string | null>(() => {
+    try {
+      return typeof window !== 'undefined' ? localStorage.getItem('userPhoto') : null;
+    } catch {
+      return null;
+    }
+  });
   const [imgFailed, setImgFailed] = useState(false);
 
   React.useEffect(() => {
-    setIsMounted(true);
     try {
       if (typeof window !== 'undefined' && window.localStorage) {
         const storedName = localStorage.getItem('userName');

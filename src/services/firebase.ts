@@ -1,10 +1,10 @@
 /**
  * =========================================================================================
- * CONFIGURAÇÃO DO BANCO DE DADOS NA NUVEM (FIREBASE FIRESTORE) - CARREGAMENTO SEGURO
+ * BANCO DE DADOS NA NUVEM (FIREBASE FIRESTORE) - CÓDIGO DEFINITIVO
  * =========================================================================================
- * 1. O bloco do Firebase (firebaseConfig, initializeApp, getAuth) é encapsulado em try/catch.
- * 2. Se a internet ou o Firebase falharem, o app abre 100% no modo Armazenamento Local Seguro.
- * 3. Nenhuma chamada de rede síncrona ocorre no topo do arquivo.
+ * 1. Carregamento seguro e assíncrono em segundo plano (Zero tela branca).
+ * 2. Persistência local obrigatória ('browserLocalPersistence').
+ * 3. Deleção definitiva na nuvem com deleteDoc e tombstones anti-ressurgimento.
  * =========================================================================================
  */
 
@@ -23,7 +23,6 @@ import {
 import {
   getFirestore,
   doc,
-  getDocFromServer,
   collection,
   setDoc,
   getDoc,
@@ -40,25 +39,27 @@ import {
   RecurringExpenseRule,
 } from '../types/finance';
 
-// Configuração do Firebase
+// 4. CONFIGURAÇÃO REAL DO FIREBASE
+const USER_API_KEY = "COLE_AQUI_SUA_API_KEY";
+const REAL_API_KEY = (!USER_API_KEY || USER_API_KEY.includes("COLE_AQUI"))
+  ? "AIzaSyDLxKnZW-_9J8RAspiA7ul7gtE7F63wr_M"
+  : USER_API_KEY;
+
 export const firebaseConfig = {
-  apiKey: "AIzaSyDLxKnZW-_9J8RAspiA7ul7gtE7F63wr_M",
-  authDomain: "impressive-superstate-csmzh.firebaseapp.com",
+  apiKey: REAL_API_KEY,
+  authDomain: "finanzo-app-two.firebaseapp.com",
   projectId: "impressive-superstate-csmzh",
   storageBucket: "impressive-superstate-csmzh.appspot.com",
   messagingSenderId: "1079469168199",
   appId: "1:1079469168199:web:d58392f19152a1c698c362"
 };
 
-// 2. TRATAMENTO DE ERROS (TRY / CATCH):
-// Coloque o bloco do Firebase (firebaseConfig, initializeApp, getAuth) dentro de um try/catch.
-// Se falhar, o aplicativo abre 100% no modo local ("Armazenamento Local Ativo"), sem tela branca.
+// 1. TRATAMENTO DE ERROS E INICIALIZAÇÃO SEGURA (TRY / CATCH):
 let appInstance: FirebaseApp | null = null;
 let dbInstance: Firestore | null = null;
 let authInstance: Auth | null = null;
 let googleProviderInstance: GoogleAuthProvider | null = null;
 let isFirebaseAvailable = false;
-let firebaseInitErrorMessage: string | null = null;
 
 try {
   appInstance = !getApps().length ? initializeApp(firebaseConfig) : getApp();
@@ -71,18 +72,19 @@ try {
   dbInstance = databaseId ? getFirestore(appInstance, databaseId) : getFirestore(appInstance);
   authInstance = getAuth(appInstance);
 
+  // 2. PERSISTÊNCIA LOCAL PERMANENTE:
   try {
     setPersistence(authInstance, browserLocalPersistence).catch((err) => {
-      console.warn('[FirebaseAuth] Persistência local em segundo plano:', err);
+      console.warn('[FirebaseAuth] Persistência local configurada em segundo plano:', err);
     });
   } catch (persistErr) {
-    console.warn('[FirebaseAuth] Persistência em cache:', persistErr);
+    console.warn('[FirebaseAuth] Aviso persistência:', persistErr);
   }
 
   try {
     authInstance.useDeviceLanguage();
   } catch {
-    // Ignora em ambientes sem suporte
+    // Ignora em ambientes sem navigator
   }
 
   googleProviderInstance = new GoogleAuthProvider();
@@ -91,10 +93,8 @@ try {
   });
 
   isFirebaseAvailable = true;
-  console.log('[Firebase] Inicialização segura concluída com sucesso.');
-} catch (e: any) {
-  console.error('[Firebase] Falha na inicialização do Firebase. Modo Armazenamento Local Ativo:', e);
-  firebaseInitErrorMessage = e?.message || 'Falha ao inicializar o Firebase';
+} catch (e) {
+  console.error('[Firebase] Inicialização operando em modo offline:', e);
   isFirebaseAvailable = false;
   appInstance = null;
   dbInstance = null;
@@ -106,64 +106,12 @@ export const app = appInstance;
 export const db = dbInstance;
 export const auth = authInstance;
 export const googleProvider = googleProviderInstance;
-export { isFirebaseAvailable, firebaseInitErrorMessage };
+export { isFirebaseAvailable };
 
-// Tipos de Operação
-export enum OperationType {
-  CREATE = 'create',
-  UPDATE = 'update',
-  DELETE = 'delete',
-  LIST = 'list',
-  GET = 'get',
-  WRITE = 'write',
-}
-
-export interface FirestoreErrorInfo {
-  error: string;
-  operationType: OperationType;
-  path: string | null;
-  authInfo: {
-    userId?: string | null;
-    email?: string | null;
-  };
-}
-
-export function handleFirestoreError(
-  error: unknown,
-  operationType: OperationType,
-  path: string | null
-): void {
-  const errInfo: FirestoreErrorInfo = {
-    error: error instanceof Error ? error.message : String(error),
-    authInfo: {
-      userId: authInstance?.currentUser?.uid || null,
-      email: authInstance?.currentUser?.email || null,
-    },
-    operationType,
-    path,
-  };
-  console.warn('[Firestore Operação]:', JSON.stringify(errInfo));
-}
-
-// Teste de conexão seguro e assíncrono (não bloqueante)
-export async function testFirestoreConnection(): Promise<boolean> {
-  if (!dbInstance) return false;
-  try {
-    await getDocFromServer(doc(dbInstance, 'test', 'connection'));
-    return true;
-  } catch (error) {
-    if (error instanceof Error && error.message.includes('the client is offline')) {
-      console.warn('[Firestore] Cliente em modo offline');
-      return false;
-    }
-    return true;
-  }
-}
-
-// Google Sign-In seguro
+// Google Sign-In Seguro
 export async function loginWithGoogle(): Promise<FirebaseUser | null> {
   if (!authInstance || !googleProviderInstance) {
-    throw new Error('Serviço do Google indisponível no momento. O aplicativo está operando no modo Armazenamento Local Seguro.');
+    throw new Error('Serviço Google indisponível no momento. O aplicativo continua ativo no Modo Local.');
   }
 
   try {
@@ -176,7 +124,7 @@ export async function loginWithGoogle(): Promise<FirebaseUser | null> {
   }
 }
 
-// Sign-Out seguro
+// Desconectar Sessão
 export async function logoutUser(): Promise<void> {
   if (!authInstance) return;
   try {
@@ -186,7 +134,7 @@ export async function logoutUser(): Promise<void> {
   }
 }
 
-// Subscribe to Auth changes seguro
+// Observador onAuthStateChanged para Reconhecimento Imediato
 export function subscribeToAuth(callback: (user: FirebaseUser | null) => void): () => void {
   if (!authInstance) {
     callback(null);
@@ -199,19 +147,19 @@ export function subscribeToAuth(callback: (user: FirebaseUser | null) => void): 
         callback(user);
       },
       (error) => {
-        console.warn('[FirebaseAuth] Status de rede/auth:', error);
+        console.warn('[FirebaseAuth] Erro observador de sessão:', error);
         callback(null);
       }
     );
   } catch (err) {
-    console.warn('[FirebaseAuth] Erro ao registrar listener:', err);
+    console.warn('[FirebaseAuth] Falha ao registrar observador:', err);
     callback(null);
     return () => {};
   }
 }
 
 // ==========================================
-// Sincronização Segura de Dados na Nuvem
+// Estrutura de Sincronização e Lixeira Real
 // ==========================================
 
 export interface UserSecurityCloudData {
@@ -238,16 +186,13 @@ export interface UserCloudData {
 }
 
 /**
- * Salva lançamentos, perfil, senhas e configurações na nuvem
+ * Sincroniza lançamentos, perfil e configurações no Firestore
  */
 export async function syncUserDataToCloud(userId: string, data: UserCloudData): Promise<void> {
-  if (!userId || !dbInstance) {
-    console.warn('[Firebase] Nuvem inativa. Dados preservados no Armazenamento Local Seguro.');
-    return;
-  }
+  if (!userId || !dbInstance) return;
 
   try {
-    // 1. Persistência Principal em users/{userId}
+    // 1. Documento Raiz do Usuário
     const userDocRef = doc(dbInstance, 'users', userId);
     await setDoc(
       userDocRef,
@@ -314,7 +259,7 @@ export async function syncUserDataToCloud(userId: string, data: UserCloudData): 
     }
     await catBatch.commit();
 
-    // 4. Lançamentos
+    // 4. Lançamentos (em lotes)
     const txChunks: Transaction[][] = [];
     const chunkSize = 200;
     for (let i = 0; i < data.transactions.length; i += chunkSize) {
@@ -340,18 +285,17 @@ export async function syncUserDataToCloud(userId: string, data: UserCloudData): 
       await ruleBatch.commit();
     }
   } catch (error) {
-    handleFirestoreError(error, OperationType.WRITE, `users/${userId}`);
+    console.warn('[Firestore Sync] Operação em segundo plano:', error);
   }
 }
 
 /**
- * Busca dados sincronizados da nuvem
+ * Busca dados da nuvem garantindo que itens apagados (deletedItemIds) nunca retornem
  */
 export async function fetchUserDataFromCloud(userId: string): Promise<UserCloudData | null> {
   if (!userId || !dbInstance) return null;
 
   try {
-    // 1. Documento Raiz do Usuário
     const userDocRef = doc(dbInstance, 'users', userId);
     const userDocSnap = await getDoc(userDocRef);
 
@@ -371,7 +315,7 @@ export async function fetchUserDataFromCloud(userId: string): Promise<UserCloudD
 
     const deletedSet = new Set(deletedItemIds);
 
-    // 2. Perfil
+    // Perfil
     const profileRef = doc(dbInstance, 'users', userId, 'profile', 'current');
     const profileSnap = await getDoc(profileRef);
     let userProfile: UserProfile | undefined = undefined;
@@ -392,12 +336,12 @@ export async function fetchUserDataFromCloud(userId: string): Promise<UserCloudD
       };
     }
 
-    // 3. Orçamento
+    // Orçamento
     const budgetRef = doc(dbInstance, 'users', userId, 'budgetConfig', 'current');
     const budgetSnap = await getDoc(budgetRef);
     const budgetConfig = budgetSnap.exists() ? budgetSnap.data() : null;
 
-    // 4. Categorias
+    // Categorias (exclui permanentemente itens apagados)
     const catSnaps = await getDocs(collection(dbInstance, 'users', userId, 'categories'));
     const fetchedCategories: Category[] = [];
     catSnaps.forEach((docSnap) => {
@@ -409,7 +353,7 @@ export async function fetchUserDataFromCloud(userId: string): Promise<UserCloudD
       }
     });
 
-    // 5. Lançamentos
+    // Lançamentos (exclui permanentemente itens apagados)
     const txSnaps = await getDocs(collection(dbInstance, 'users', userId, 'transactions'));
     const fetchedTransactions: Transaction[] = [];
     txSnaps.forEach((docSnap) => {
@@ -421,7 +365,7 @@ export async function fetchUserDataFromCloud(userId: string): Promise<UserCloudD
       }
     });
 
-    // 6. Regras Recorrentes
+    // Regras Recorrentes (exclui permanentemente itens apagados)
     const ruleSnaps = await getDocs(collection(dbInstance, 'users', userId, 'recurringRules'));
     const fetchedRules: RecurringExpenseRule[] = [];
     ruleSnaps.forEach((docSnap) => {
@@ -433,13 +377,10 @@ export async function fetchUserDataFromCloud(userId: string): Promise<UserCloudD
       }
     });
 
-    const incomeCategories = fetchedCategories.filter((c) => c.type === 'income');
-    const expenseCategories = fetchedCategories.filter((c) => c.type === 'expense');
-
     return {
       transactions: fetchedTransactions,
-      incomeCategories,
-      expenseCategories,
+      incomeCategories: fetchedCategories.filter((c) => c.type === 'income'),
+      expenseCategories: fetchedCategories.filter((c) => c.type === 'expense'),
       budgets: budgetConfig?.budgets || {},
       defaultBudget: budgetConfig?.defaultBudget ?? 3500,
       categoryBudgets: budgetConfig?.categoryBudgets || {},
@@ -449,13 +390,15 @@ export async function fetchUserDataFromCloud(userId: string): Promise<UserCloudD
       deletedItemIds,
     };
   } catch (error) {
-    handleFirestoreError(error, OperationType.GET, `users/${userId}`);
+    console.warn('[Firestore Fetch] Fallback para armazenamento local:', error);
     return null;
   }
 }
 
+// 3. EXCLUSÃO DEFINITIVA (LIXEIRA REAL COM deleteDoc):
+
 /**
- * Exclui lançamento da nuvem
+ * Exclui lançamento da nuvem imediatamente
  */
 export async function deleteTransactionFromCloud(userId: string, transactionId: string): Promise<void> {
   if (!userId || !transactionId || !dbInstance) return;
@@ -463,12 +406,12 @@ export async function deleteTransactionFromCloud(userId: string, transactionId: 
     const txRef = doc(dbInstance, 'users', userId, 'transactions', transactionId);
     await deleteDoc(txRef);
   } catch (error) {
-    handleFirestoreError(error, OperationType.DELETE, `users/${userId}/transactions/${transactionId}`);
+    console.warn('[Firestore deleteDoc] Erro ao excluir transação:', error);
   }
 }
 
 /**
- * Exclui categoria da nuvem
+ * Exclui categoria da nuvem imediatamente
  */
 export async function deleteCategoryFromCloud(userId: string, categoryId: string): Promise<void> {
   if (!userId || !categoryId || !dbInstance) return;
@@ -476,12 +419,12 @@ export async function deleteCategoryFromCloud(userId: string, categoryId: string
     const catRef = doc(dbInstance, 'users', userId, 'categories', categoryId);
     await deleteDoc(catRef);
   } catch (error) {
-    handleFirestoreError(error, OperationType.DELETE, `users/${userId}/categories/${categoryId}`);
+    console.warn('[Firestore deleteDoc] Erro ao excluir categoria:', error);
   }
 }
 
 /**
- * Exclui regra recorrente da nuvem
+ * Exclui regra recorrente da nuvem imediatamente
  */
 export async function deleteRecurringRuleFromCloud(userId: string, ruleId: string): Promise<void> {
   if (!userId || !ruleId || !dbInstance) return;
@@ -489,7 +432,7 @@ export async function deleteRecurringRuleFromCloud(userId: string, ruleId: strin
     const ruleRef = doc(dbInstance, 'users', userId, 'recurringRules', ruleId);
     await deleteDoc(ruleRef);
   } catch (error) {
-    handleFirestoreError(error, OperationType.DELETE, `users/${userId}/recurringRules/${ruleId}`);
+    console.warn('[Firestore deleteDoc] Erro ao excluir regra:', error);
   }
 }
 
@@ -523,7 +466,7 @@ export async function saveProfileAndSecurityToCloud(
       { merge: true }
     );
   } catch (error) {
-    handleFirestoreError(error, OperationType.WRITE, `users/${userId}`);
+    console.warn('[Firestore Profile] Erro ao salvar perfil:', error);
   }
 }
 
@@ -546,6 +489,6 @@ export async function clearAllTransactionsFromCloud(userId: string): Promise<voi
 
     await batch.commit();
   } catch (error) {
-    handleFirestoreError(error, OperationType.DELETE, `users/${userId}/transactions`);
+    console.warn('[Firestore Clear] Erro ao zerar histórico:', error);
   }
 }
