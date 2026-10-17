@@ -15,6 +15,8 @@ import {
   browserLocalPersistence,
   GoogleAuthProvider,
   signInWithPopup,
+  signInWithRedirect,
+  getRedirectResult,
   signOut,
   onAuthStateChanged,
   User as FirebaseUser,
@@ -99,6 +101,17 @@ try {
       } catch {}
       googleProviderInstance = new GoogleAuthProvider();
       googleProviderInstance.setCustomParameters({ prompt: 'select_account' });
+
+      // Captura inicial do retorno do redirecionamento do Google (signInWithRedirect)
+      getRedirectResult(authInstance)
+        .then((redirectUser) => {
+          if (redirectUser?.user) {
+            console.log('[FirebaseAuth] Usuário autenticado com sucesso pós-redirecionamento:', redirectUser.user.email);
+          }
+        })
+        .catch((redirectErr) => {
+          console.warn('[FirebaseAuth] Aviso seguro no getRedirectResult inicial:', redirectErr);
+        });
     } catch (errAuth) {
       console.warn('[FirebaseAuth] Inicialização em modo local:', errAuth);
       authInstance = null;
@@ -122,16 +135,61 @@ export const auth = authInstance;
 export const googleProvider = googleProviderInstance;
 export { isFirebaseAvailable };
 
-// Google Sign-In Seguro
+// Função para detectar smartphones, tablets e webviews móveis
+export function isMobileDevice(): boolean {
+  if (typeof window === 'undefined' || typeof navigator === 'undefined') return false;
+  return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+}
+
+// Captura segura do resultado de redirect do Google no carregamento da aplicação
+export async function checkRedirectResult(): Promise<FirebaseUser | null> {
+  if (!authInstance) return null;
+  try {
+    const result = await getRedirectResult(authInstance);
+    if (result && result.user) {
+      console.log('[FirebaseAuth] Login capturado com sucesso via redirect:', result.user.email);
+      return result.user;
+    }
+    return null;
+  } catch (err: any) {
+    console.warn('[FirebaseAuth] Erro seguro ao verificar getRedirectResult:', err);
+    return null;
+  }
+}
+
+// Google Sign-In: em dispositivos móveis usa signInWithRedirect (evita bloqueio de popup); em desktop usa popup com fallback
 export async function loginWithGoogle(): Promise<FirebaseUser | null> {
   if (!authInstance || !googleProviderInstance) {
     throw new Error('Serviço Google indisponível no momento. O aplicativo continua ativo no Modo Local.');
   }
 
   try {
-    await setPersistence(authInstance, browserLocalPersistence).catch(() => {});
-    const result = await signInWithPopup(authInstance, googleProviderInstance);
-    return result.user;
+    try {
+      await setPersistence(authInstance, browserLocalPersistence);
+    } catch (persistErr) {
+      console.warn('[FirebaseAuth] Aviso na persistência durante login:', persistErr);
+    }
+
+    if (isMobileDevice()) {
+      // Em dispositivos móveis (smartphones/webviews), substitui popup por signInWithRedirect
+      console.log('[FirebaseAuth] Dispositivo móvel detectado: iniciando signInWithRedirect...');
+      await signInWithRedirect(authInstance, googleProviderInstance);
+      return null;
+    } else {
+      // Em desktops/laptops, usa popup para experiência fluida sem recarregar a página
+      try {
+        const result = await signInWithPopup(authInstance, googleProviderInstance);
+        return result.user;
+      } catch (popupErr: any) {
+        // Se popup foi bloqueado pelo navegador, fallback imediato para signInWithRedirect
+        if (popupErr?.code === 'auth/popup-blocked' || popupErr?.code === 'auth/popup-closed-by-user') {
+          console.log('[FirebaseAuth] Popup bloqueado ou fechado, tentando signInWithRedirect...');
+          await signInWithRedirect(authInstance, googleProviderInstance);
+          return null;
+        }
+        throw popupErr;
+      }
+    }
   } catch (err: any) {
     console.error('[FirebaseAuth] Erro no login Google:', err);
     throw err;

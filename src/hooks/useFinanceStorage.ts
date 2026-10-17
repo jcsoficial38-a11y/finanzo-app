@@ -39,6 +39,7 @@ import {
   fetchUserDataFromCloud,
   deleteTransactionFromCloud,
   clearAllTransactionsFromCloud,
+  checkRedirectResult,
 } from '../services/firebase';
 import type { User as FirebaseUser } from 'firebase/auth';
 import {
@@ -184,6 +185,20 @@ export function useFinanceStorage() {
       setAuthUser(user);
     });
     return () => unsubscribe();
+  }, []);
+
+  // Captura do resultado de redirecionamento do Google OAuth (signInWithRedirect) no carregamento inicial
+  useEffect(() => {
+    checkRedirectResult()
+      .then((user) => {
+        if (user) {
+          console.log('[useFinanceStorage] Usuário autenticado pós-redirect Google:', user.email);
+          setAuthUser(user);
+        }
+      })
+      .catch((err) => {
+        console.warn('[useFinanceStorage] Erro ao recuperar redirect auth:', err);
+      });
   }, []);
 
   // 1. Request Browser Durable Storage & Hydrate from IndexedDB if needed
