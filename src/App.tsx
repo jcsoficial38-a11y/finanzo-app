@@ -27,7 +27,7 @@ import { ProfileModal } from './components/ProfileModal';
 import { LockScreen } from './components/LockScreen';
 import { getPinStatus, getStoredPinData } from './utils/pinSecurity';
 import { getBiometricStatus, getStoredBiometricData } from './utils/biometricSecurity';
-import { saveProfileAndSecurityToCloud } from './services/firebase';
+import { saveProfileAndSecurityToCloud, checkRedirectResult } from './services/firebase';
 import { ActiveTab } from './types/finance';
 import { formatCurrency } from './utils/formatters';
 import { exportMonthToCSV } from './utils/csvExport';
@@ -76,7 +76,7 @@ export default function App() {
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
 
   // 4-Digit PIN & Biometric Lock State:
-  // Ao abrir o aplicativo, verifica se há senha PIN ou biometria ativa. Se houver, renderiza PRIMEIRO a LockScreen
+  // Ao abrir o aplicativo, verifica se há senha PIN ou biometria ativa.
   const [isLocked, setIsLocked] = useState<boolean>(() => {
     try {
       const pin = getPinStatus();
@@ -87,6 +87,27 @@ export default function App() {
       return false;
     }
   });
+
+  // Processamento do retorno do redirecionamento do Google (getRedirectResult) no carregamento inicial do app
+  React.useEffect(() => {
+    async function processRedirect() {
+      try {
+        const user = await checkRedirectResult();
+        if (user) {
+          console.log('[App] Login do Google confirmado após retorno de redirecionamento:', user.email);
+          // Após a autenticação ser confirmada, verifique se há PIN/Biometria configurados e exiba a tela 'LockScreen.tsx'
+          const pin = getPinStatus();
+          const bio = getBiometricStatus();
+          if ((pin.hasPin && pin.isEnabled) || (bio.hasKey && bio.isEnabled)) {
+            setIsLocked(true);
+          }
+        }
+      } catch (err) {
+        console.warn('[App] Erro seguro ao verificar getRedirectResult:', err);
+      }
+    }
+    processRedirect();
+  }, []);
 
   // Se houver senha/biometria cadastrada, RENDERIZE PRIMEIRO o componente 'LockScreen.tsx' antes de dar acesso ao painel
   if (isLocked) {

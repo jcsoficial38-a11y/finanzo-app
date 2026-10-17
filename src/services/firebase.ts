@@ -157,8 +157,8 @@ export async function checkRedirectResult(): Promise<FirebaseUser | null> {
   }
 }
 
-// Google Sign-In: em dispositivos móveis usa signInWithRedirect (evita bloqueio de popup); em desktop usa popup com fallback
-export async function loginWithGoogle(): Promise<FirebaseUser | null> {
+// Google Sign-In Definitivo por Redirecionamento (signInWithRedirect - sem popup)
+export async function loginWithGoogle(): Promise<void> {
   if (!authInstance || !googleProviderInstance) {
     throw new Error('Serviço Google indisponível no momento. O aplicativo continua ativo no Modo Local.');
   }
@@ -170,28 +170,10 @@ export async function loginWithGoogle(): Promise<FirebaseUser | null> {
       console.warn('[FirebaseAuth] Aviso na persistência durante login:', persistErr);
     }
 
-    if (isMobileDevice()) {
-      // Em dispositivos móveis (smartphones/webviews), substitui popup por signInWithRedirect
-      console.log('[FirebaseAuth] Dispositivo móvel detectado: iniciando signInWithRedirect...');
-      await signInWithRedirect(authInstance, googleProviderInstance);
-      return null;
-    } else {
-      // Em desktops/laptops, usa popup para experiência fluida sem recarregar a página
-      try {
-        const result = await signInWithPopup(authInstance, googleProviderInstance);
-        return result.user;
-      } catch (popupErr: any) {
-        // Se popup foi bloqueado pelo navegador, fallback imediato para signInWithRedirect
-        if (popupErr?.code === 'auth/popup-blocked' || popupErr?.code === 'auth/popup-closed-by-user') {
-          console.log('[FirebaseAuth] Popup bloqueado ou fechado, tentando signInWithRedirect...');
-          await signInWithRedirect(authInstance, googleProviderInstance);
-          return null;
-        }
-        throw popupErr;
-      }
-    }
+    console.log('[FirebaseAuth] Redirecionando para autenticação com Google (signInWithRedirect)...');
+    await signInWithRedirect(authInstance, googleProviderInstance);
   } catch (err: any) {
-    console.error('[FirebaseAuth] Erro no login Google:', err);
+    console.error('[FirebaseAuth] Erro no signInWithRedirect:', err);
     throw err;
   }
 }
