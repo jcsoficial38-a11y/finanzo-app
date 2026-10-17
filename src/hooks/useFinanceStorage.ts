@@ -34,8 +34,6 @@ import {
 import {
   subscribeToAuth,
   loginWithGoogle,
-  loginWithEmail,
-  registerWithEmail,
   logoutUser,
   syncUserDataToCloud,
   fetchUserDataFromCloud,
@@ -336,10 +334,16 @@ export function useFinanceStorage() {
         const cloudData = await fetchUserDataFromCloud(authUser.uid);
         if (!isMounted) return;
 
-        if (cloudData && (cloudData.transactions.length > 0 || cloudData.incomeCategories.length > 0)) {
-          if (cloudData.transactions.length > 0) {
-            setTransactions(cloudData.transactions);
-          }
+        // Se houver dados no Firestore para este UID da conta Google:
+        if (
+          cloudData &&
+          (cloudData.transactions.length > 0 ||
+            cloudData.incomeCategories.length > 0 ||
+            cloudData.expenseCategories.length > 0 ||
+            cloudData.userProfile?.name)
+        ) {
+          markHasRealUserData();
+          setTransactions(cloudData.transactions);
           if (cloudData.incomeCategories.length > 0) {
             setIncomeCategories(cloudData.incomeCategories);
           }
@@ -368,7 +372,6 @@ export function useFinanceStorage() {
                 prev.name.trim().toLowerCase() === 'usuario';
 
               if (!isPrevGeneric && isCloudGeneric) {
-                // Keep local real name, merge cloud photo if missing locally
                 const merged = {
                   ...cloudProfile,
                   name: prev.name,
@@ -386,7 +389,7 @@ export function useFinanceStorage() {
             setRecurringRules(cloudData.recurringRules);
           }
         } else {
-          // Cloud empty for this user: initial upload of local data
+          // Primeira conexão desta conta Google: salva os dados locais atuais na nuvem
           await syncUserDataToCloud(authUser.uid, {
             transactions,
             incomeCategories,
@@ -1084,8 +1087,6 @@ export function useFinanceStorage() {
     cloudSyncState,
     lastSyncTime,
     loginWithGoogle,
-    loginWithEmail,
-    registerWithEmail,
     logoutUser,
     syncNow,
   };

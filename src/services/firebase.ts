@@ -17,8 +17,6 @@ import {
   signInWithPopup,
   signInWithRedirect,
   getRedirectResult,
-  signInWithEmailAndPassword,
-  createUserWithEmailAndPassword,
   signOut,
   onAuthStateChanged,
   User as FirebaseUser,
@@ -145,65 +143,47 @@ export async function checkRedirectResult(): Promise<FirebaseUser | null> {
   }
 }
 
-// Google Sign-In Padrão Limpo (signInWithPopup)
+// 1. Google Sign-In Oficial 1-Clique (Popup com fallback limpo para Redirect)
 export async function loginWithGoogle(): Promise<FirebaseUser | null> {
   if (!authInstance || !googleProviderInstance) {
-    throw new Error('Serviço Google indisponível no momento. O aplicativo continua ativo no Modo Local.');
+    throw new Error('Serviço de autenticação temporariamente indisponível. Operando no modo local.');
   }
 
   try {
+    // Garante a persistência local permanente para manter o usuário sempre logado no celular
     try {
       await setPersistence(authInstance, browserLocalPersistence);
     } catch (persistErr) {
-      console.warn('[FirebaseAuth] Aviso na persistência durante login:', persistErr);
+      console.warn('[FirebaseAuth] Aviso ao reforçar persistência:', persistErr);
     }
 
-    const result = await signInWithPopup(authInstance, googleProviderInstance);
-    return result.user;
-  } catch (err: any) {
-    console.error('[FirebaseAuth] Erro no login Google (signInWithPopup):', err);
-    throw err;
-  }
-}
-
-// Login com E-mail e Senha
-export async function loginWithEmail(email: string, pass: string): Promise<FirebaseUser | null> {
-  if (!authInstance) {
-    throw new Error('Serviço de autenticação indisponível no momento. O aplicativo continua ativo no Modo Local.');
-  }
-
-  try {
+    // Tenta primeiro signInWithPopup (padrão desktop e navegadores modernos)
     try {
-      await setPersistence(authInstance, browserLocalPersistence);
-    } catch (persistErr) {
-      console.warn('[FirebaseAuth] Aviso na persistência durante login por e-mail:', persistErr);
+      const result = await signInWithPopup(authInstance, googleProviderInstance);
+      return result.user;
+    } catch (popupErr: any) {
+      console.warn('[FirebaseAuth] Popup falhou ou foi bloqueado. Verificando fallback...', popupErr);
+      const code = popupErr?.code || '';
+      const message = (popupErr?.message || '').toLowerCase();
+
+      // Detecta se pop-up foi bloqueado, fechado ou se estamos em dispositivo móvel/webview
+      const isBlocked =
+        code === 'auth/popup-blocked' ||
+        code === 'auth/popup-closed-by-user' ||
+        code === 'auth/cancelled-popup-request' ||
+        message.includes('popup') ||
+        isMobileDevice();
+
+      if (isBlocked) {
+        console.log('[FirebaseAuth] Executando fallback seguro para signInWithRedirect...');
+        await signInWithRedirect(authInstance, googleProviderInstance);
+        return null;
+      }
+
+      throw popupErr;
     }
-
-    const result = await signInWithEmailAndPassword(authInstance, email.trim(), pass);
-    return result.user;
   } catch (err: any) {
-    console.error('[FirebaseAuth] Erro no login por e-mail:', err);
-    throw err;
-  }
-}
-
-// Criação de Conta com E-mail e Senha
-export async function registerWithEmail(email: string, pass: string): Promise<FirebaseUser | null> {
-  if (!authInstance) {
-    throw new Error('Serviço de autenticação indisponível no momento. O aplicativo continua ativo no Modo Local.');
-  }
-
-  try {
-    try {
-      await setPersistence(authInstance, browserLocalPersistence);
-    } catch (persistErr) {
-      console.warn('[FirebaseAuth] Aviso na persistência durante cadastro por e-mail:', persistErr);
-    }
-
-    const result = await createUserWithEmailAndPassword(authInstance, email.trim(), pass);
-    return result.user;
-  } catch (err: any) {
-    console.error('[FirebaseAuth] Erro no cadastro por e-mail:', err);
+    console.error('[FirebaseAuth] Erro no fluxo de autenticação Google:', err);
     throw err;
   }
 }
