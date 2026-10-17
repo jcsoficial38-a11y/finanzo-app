@@ -64,6 +64,8 @@ export default function App() {
     authUser,
     cloudSyncState,
     loginWithGoogle,
+    loginWithEmail,
+    registerWithEmail,
     logoutUser,
     syncNow,
   } = useFinanceStorage();
@@ -393,6 +395,8 @@ export default function App() {
         authUser={authUser}
         cloudSyncState={cloudSyncState}
         onLoginGoogle={loginWithGoogle}
+        onLoginEmail={loginWithEmail}
+        onRegisterEmail={registerWithEmail}
         onLogoutGoogle={logoutUser}
         onSyncNow={syncNow}
         onPinChange={() => {

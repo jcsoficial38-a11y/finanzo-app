@@ -34,6 +34,8 @@ import {
 import {
   subscribeToAuth,
   loginWithGoogle,
+  loginWithEmail,
+  registerWithEmail,
   logoutUser,
   syncUserDataToCloud,
   fetchUserDataFromCloud,
@@ -1082,6 +1084,8 @@ export function useFinanceStorage() {
     cloudSyncState,
     lastSyncTime,
     loginWithGoogle,
+    loginWithEmail,
+    registerWithEmail,
     logoutUser,
     syncNow,
   };

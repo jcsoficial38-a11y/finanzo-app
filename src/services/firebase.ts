@@ -17,6 +17,8 @@ import {
   signInWithPopup,
   signInWithRedirect,
   getRedirectResult,
+  signInWithEmailAndPassword,
+  createUserWithEmailAndPassword,
   signOut,
   onAuthStateChanged,
   User as FirebaseUser,
@@ -160,6 +162,48 @@ export async function loginWithGoogle(): Promise<FirebaseUser | null> {
     return result.user;
   } catch (err: any) {
     console.error('[FirebaseAuth] Erro no login Google (signInWithPopup):', err);
+    throw err;
+  }
+}
+
+// Login com E-mail e Senha
+export async function loginWithEmail(email: string, pass: string): Promise<FirebaseUser | null> {
+  if (!authInstance) {
+    throw new Error('Serviço de autenticação indisponível no momento. O aplicativo continua ativo no Modo Local.');
+  }
+
+  try {
+    try {
+      await setPersistence(authInstance, browserLocalPersistence);
+    } catch (persistErr) {
+      console.warn('[FirebaseAuth] Aviso na persistência durante login por e-mail:', persistErr);
+    }
+
+    const result = await signInWithEmailAndPassword(authInstance, email.trim(), pass);
+    return result.user;
+  } catch (err: any) {
+    console.error('[FirebaseAuth] Erro no login por e-mail:', err);
+    throw err;
+  }
+}
+
+// Criação de Conta com E-mail e Senha
+export async function registerWithEmail(email: string, pass: string): Promise<FirebaseUser | null> {
+  if (!authInstance) {
+    throw new Error('Serviço de autenticação indisponível no momento. O aplicativo continua ativo no Modo Local.');
+  }
+
+  try {
+    try {
+      await setPersistence(authInstance, browserLocalPersistence);
+    } catch (persistErr) {
+      console.warn('[FirebaseAuth] Aviso na persistência durante cadastro por e-mail:', persistErr);
+    }
+
+    const result = await createUserWithEmailAndPassword(authInstance, email.trim(), pass);
+    return result.user;
+  } catch (err: any) {
+    console.error('[FirebaseAuth] Erro no cadastro por e-mail:', err);
     throw err;
   }
 }

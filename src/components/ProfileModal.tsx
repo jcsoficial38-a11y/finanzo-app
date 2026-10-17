@@ -23,6 +23,8 @@ import {
   Cloud,
   RefreshCw,
   LogOut,
+  LogIn,
+  UserPlus,
 } from 'lucide-react';
 import { UserProfile } from '../types/finance';
 import { PASTEL_COLORS } from '../data/initialData';
@@ -61,7 +63,9 @@ interface ProfileModalProps {
   onClearTransactions?: () => void;
   authUser?: any;
   cloudSyncState?: 'idle' | 'syncing' | 'synced' | 'error';
-  onLoginGoogle?: () => void;
+  onLoginGoogle?: () => Promise<any> | void;
+  onLoginEmail?: (email: string, pass: string) => Promise<any>;
+  onRegisterEmail?: (email: string, pass: string) => Promise<any>;
   onLogoutGoogle?: () => void;
   onSyncNow?: () => void;
 }
@@ -79,6 +83,8 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
   authUser,
   cloudSyncState = 'idle',
   onLoginGoogle,
+  onLoginEmail,
+  onRegisterEmail,
   onLogoutGoogle,
   onSyncNow,
 }) => {
@@ -90,10 +96,21 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
   const [savedSuccess, setSavedSuccess] = useState(false);
   const [isLoggingIn, setIsLoggingIn] = useState(false);
   const [googleLoginError, setGoogleLoginError] = useState<string | null>(null);
+
+  // Email & Password Auth State
+  const [emailInput, setEmailInput] = useState('');
+  const [passwordInput, setPasswordInput] = useState('');
+  const [showAuthPassword, setShowAuthPassword] = useState(false);
+  const [isEmailSubmitting, setIsEmailSubmitting] = useState(false);
+  const [emailAuthError, setEmailAuthError] = useState<string | null>(null);
+  const [emailAuthSuccess, setEmailAuthSuccess] = useState<string | null>(null);
+
   const { themeId, setTheme } = useAppTheme();
 
   const handleLoginGoogleClick = async () => {
     setGoogleLoginError(null);
+    setEmailAuthError(null);
+    setEmailAuthSuccess(null);
     setIsLoggingIn(true);
     try {
       if (onLoginGoogle) {
@@ -101,11 +118,82 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
       }
     } catch (err: any) {
       console.warn('[ProfileModal] Aviso/Erro no login Google:', err);
-      if (err?.code !== 'auth/popup-closed-by-user' && err?.code !== 'auth/cancelled-popup-request') {
-        setGoogleLoginError(err?.message || 'Falha ao iniciar o login com o Google. O botão permanece ativo para tentar novamente.');
-      }
+      // Mensagem amigável visível na tela
+      setGoogleLoginError('Não foi possível conectar com o Google, tente com E-mail e Senha.');
     } finally {
       setIsLoggingIn(false);
+    }
+  };
+
+  const handleEmailLogin = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (!emailInput.trim() || !passwordInput.trim()) {
+      setEmailAuthError('Preencha seu e-mail e senha para entrar.');
+      return;
+    }
+    setEmailAuthError(null);
+    setEmailAuthSuccess(null);
+    setGoogleLoginError(null);
+    setIsEmailSubmitting(true);
+    try {
+      if (onLoginEmail) {
+        await onLoginEmail(emailInput.trim(), passwordInput);
+      }
+      setEmailAuthSuccess('Login realizado com sucesso! Conectando à nuvem...');
+    } catch (err: any) {
+      console.warn('[ProfileModal] Erro no login por e-mail:', err);
+      const code = err?.code || '';
+      if (code === 'auth/invalid-email') {
+        setEmailAuthError('Formato de e-mail inválido. Verifique o endereço digitado.');
+      } else if (
+        code === 'auth/user-not-found' ||
+        code === 'auth/wrong-password' ||
+        code === 'auth/invalid-credential'
+      ) {
+        setEmailAuthError('E-mail ou senha incorretos.');
+      } else if (code === 'auth/too-many-requests') {
+        setEmailAuthError('Muitas tentativas. Aguarde um instante e tente novamente.');
+      } else {
+        setEmailAuthError(err?.message || 'Falha ao autenticar. Tente novamente.');
+      }
+    } finally {
+      setIsEmailSubmitting(false);
+    }
+  };
+
+  const handleEmailRegister = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (!emailInput.trim() || !passwordInput.trim()) {
+      setEmailAuthError('Preencha o e-mail e a senha desejada para criar a conta.');
+      return;
+    }
+    if (passwordInput.length < 6) {
+      setEmailAuthError('A senha deve ter no mínimo 6 caracteres.');
+      return;
+    }
+    setEmailAuthError(null);
+    setEmailAuthSuccess(null);
+    setGoogleLoginError(null);
+    setIsEmailSubmitting(true);
+    try {
+      if (onRegisterEmail) {
+        await onRegisterEmail(emailInput.trim(), passwordInput);
+      }
+      setEmailAuthSuccess('Conta criada com sucesso! Sincronizando dados com a nuvem...');
+    } catch (err: any) {
+      console.warn('[ProfileModal] Erro ao criar conta:', err);
+      const code = err?.code || '';
+      if (code === 'auth/email-already-in-use') {
+        setEmailAuthError('Este e-mail já está cadastrado. Clique no botão "Entrar".');
+      } else if (code === 'auth/invalid-email') {
+        setEmailAuthError('Formato de e-mail inválido. Verifique o endereço digitado.');
+      } else if (code === 'auth/weak-password') {
+        setEmailAuthError('Senha muito fraca. Digite pelo menos 6 caracteres.');
+      } else {
+        setEmailAuthError(err?.message || 'Falha ao criar conta. Tente novamente.');
+      }
+    } finally {
+      setIsEmailSubmitting(false);
     }
   };
 
@@ -906,28 +994,150 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
                 </div>
               </div>
             ) : (
-              <div className="space-y-2 pt-1 border-t border-sky-200/60">
+              <div className="space-y-3 pt-2 border-t border-sky-200/60">
+                {/* 1. Botão Oficial Google (com popup limpo e try/catch/finally que nunca trava) */}
                 <button
                   type="button"
                   onClick={handleLoginGoogleClick}
                   disabled={false}
                   className="w-full py-2.5 px-3 bg-sky-600 hover:bg-sky-700 active:bg-sky-800 active:scale-98 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all shadow-xs cursor-pointer"
                 >
-                  <Cloud className={`w-4 h-4 text-white ${isLoggingIn ? 'animate-pulse' : ''}`} />
+                  {isLoggingIn ? (
+                    <RefreshCw className="w-4 h-4 text-white animate-spin" />
+                  ) : (
+                    <Cloud className="w-4 h-4 text-white" />
+                  )}
                   <span>
                     {isLoggingIn
                       ? 'Conectando ao Google...'
                       : 'Fazer Login com o Google'}
                   </span>
                 </button>
+
+                {/* 2. Aviso de Erro Visível Amigável do Google */}
                 {googleLoginError && (
-                  <div className="flex items-center gap-1.5 p-2 bg-rose-50 text-rose-700 rounded-xl text-xs font-medium border border-rose-200 animate-in fade-in">
-                    <AlertCircle className="w-3.5 h-3.5 shrink-0" />
-                    <span>{googleLoginError}</span>
+                  <div className="p-2.5 bg-amber-50 text-amber-900 rounded-xl text-xs font-medium border border-amber-200 flex items-start gap-2 animate-in fade-in">
+                    <AlertCircle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                    <div className="flex-1">
+                      <p className="font-semibold">{googleLoginError}</p>
+                      <p className="text-[11px] text-amber-700 mt-0.5">
+                        Você pode entrar rapidamente digitando seu E-mail e Senha logo abaixo:
+                      </p>
+                    </div>
                   </div>
                 )}
-                <p className="text-[10px] text-sky-800/80 text-center">
-                  Todos os lançamentos locais serão salvos com segurança no Firebase Firestore.
+
+                {/* Linha Divisória */}
+                <div className="flex items-center gap-2 py-0.5">
+                  <div className="h-px flex-1 bg-sky-200/80" />
+                  <span className="text-[10px] font-bold text-sky-800 uppercase tracking-wider">
+                    ou acesse com e-mail e senha
+                  </span>
+                  <div className="h-px flex-1 bg-sky-200/80" />
+                </div>
+
+                {/* 3. Alternativa de E-mail e Senha */}
+                <form
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    handleEmailLogin(e);
+                  }}
+                  className="space-y-2.5 bg-white/70 p-3 rounded-2xl border border-sky-100/90 shadow-2xs"
+                >
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                      E-mail
+                    </label>
+                    <div className="relative">
+                      <Mail className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                      <input
+                        type="email"
+                        value={emailInput}
+                        onChange={(e) => setEmailInput(e.target.value)}
+                        placeholder="seu@email.com"
+                        className="w-full pl-9 pr-3 py-2 bg-white border border-slate-200 rounded-xl text-xs text-slate-800 placeholder:text-slate-400 focus:outline-none focus:border-sky-500 focus:ring-1 focus:ring-sky-500 transition-colors shadow-2xs"
+                        autoComplete="email"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                      Senha
+                    </label>
+                    <div className="relative">
+                      <Lock className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                      <input
+                        type={showAuthPassword ? 'text' : 'password'}
+                        value={passwordInput}
+                        onChange={(e) => setPasswordInput(e.target.value)}
+                        placeholder="Mínimo de 6 caracteres"
+                        className="w-full pl-9 pr-9 py-2 bg-white border border-slate-200 rounded-xl text-xs text-slate-800 placeholder:text-slate-400 focus:outline-none focus:border-sky-500 focus:ring-1 focus:ring-sky-500 transition-colors shadow-2xs"
+                        autoComplete="current-password"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowAuthPassword(!showAuthPassword)}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer p-0.5"
+                        tabIndex={-1}
+                        title={showAuthPassword ? 'Ocultar senha' : 'Ver senha'}
+                      >
+                        {showAuthPassword ? (
+                          <EyeOff className="w-3.5 h-3.5" />
+                        ) : (
+                          <Eye className="w-3.5 h-3.5" />
+                        )}
+                      </button>
+                    </div>
+                  </div>
+
+                  {emailAuthError && (
+                    <div className="p-2 bg-rose-50 text-rose-700 rounded-xl text-xs font-medium border border-rose-200 flex items-center gap-1.5 animate-in fade-in">
+                      <AlertCircle className="w-3.5 h-3.5 shrink-0 text-rose-600" />
+                      <span>{emailAuthError}</span>
+                    </div>
+                  )}
+
+                  {emailAuthSuccess && (
+                    <div className="p-2 bg-emerald-50 text-emerald-700 rounded-xl text-xs font-medium border border-emerald-200 flex items-center gap-1.5 animate-in fade-in">
+                      <Check className="w-3.5 h-3.5 shrink-0 text-emerald-600" />
+                      <span>{emailAuthSuccess}</span>
+                    </div>
+                  )}
+
+                  <div className="grid grid-cols-2 gap-2 pt-1">
+                    <button
+                      type="button"
+                      onClick={handleEmailLogin}
+                      disabled={false}
+                      className="py-2.5 px-3 bg-sky-700 hover:bg-sky-800 active:bg-sky-900 active:scale-98 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-all shadow-2xs cursor-pointer"
+                    >
+                      {isEmailSubmitting ? (
+                        <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                      ) : (
+                        <LogIn className="w-3.5 h-3.5" />
+                      )}
+                      <span>{isEmailSubmitting ? 'Entrando...' : 'Entrar'}</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={handleEmailRegister}
+                      disabled={false}
+                      className="py-2.5 px-3 bg-white hover:bg-sky-50 active:bg-sky-100 active:scale-98 text-sky-800 border border-sky-300 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-all shadow-2xs cursor-pointer"
+                    >
+                      {isEmailSubmitting ? (
+                        <RefreshCw className="w-3.5 h-3.5 animate-spin text-sky-700" />
+                      ) : (
+                        <UserPlus className="w-3.5 h-3.5 text-sky-700" />
+                      )}
+                      <span>Criar Conta</span>
+                    </button>
+                  </div>
+                </form>
+
+                <p className="text-[10px] text-sky-800/80 text-center leading-tight">
+                  Seus dados e transações serão sincronizados continuamente com o Firebase.
                 </p>
               </div>
             )}
