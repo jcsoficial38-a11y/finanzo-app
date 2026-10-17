@@ -104,7 +104,7 @@ try {
       googleProviderInstance = null;
     }
 
-    isFirebaseAvailable = Boolean(appInstance && authInstance);
+    isFirebaseAvailable = Boolean(appInstance && authInstance && dbInstance);
   }
 } catch (e) {
   console.warn('[Firebase] Operando 100% no Armazenamento Local Seguro:', e);
@@ -145,8 +145,8 @@ export async function checkRedirectResult(): Promise<FirebaseUser | null> {
 
 // 1. Google Sign-In Oficial 1-Clique (Popup com fallback limpo para Redirect)
 export async function loginWithGoogle(): Promise<FirebaseUser | null> {
-  if (!authInstance || !googleProviderInstance) {
-    throw new Error('Serviço de autenticação temporariamente indisponível. Operando no modo local.');
+  if (!authInstance || !googleProviderInstance || !dbInstance) {
+    throw new Error('Google/Firestore indisponível. Seus dados continuam salvos neste dispositivo; tente novamente mais tarde.');
   }
 
   try {
@@ -247,13 +247,19 @@ export interface UserCloudData {
   recurringRules: RecurringExpenseRule[];
   security?: UserSecurityCloudData;
   deletedItemIds?: string[];
+  hasRemoteData?: boolean;
+  hasBudgetConfig?: boolean;
+  hasTransactions?: boolean;
+  hasCategories?: boolean;
+  hasRecurringRules?: boolean;
 }
 
 /**
  * Sincroniza lançamentos, perfil e configurações no Firestore
  */
 export async function syncUserDataToCloud(userId: string, data: UserCloudData): Promise<void> {
-  if (!userId || !dbInstance) return;
+  if (!userId) throw new Error('Conta Google não identificada; os dados não foram enviados.');
+  if (!dbInstance) throw new Error('Firestore indisponível; os dados não foram enviados.');
 
   try {
     // 1. Documento Raiz do Usuário
@@ -273,6 +279,9 @@ export async function syncUserDataToCloud(userId: string, data: UserCloudData): 
         themeColor: data.userProfile?.themeColor || 'sky',
         ...(data.security ? { security: data.security } : {}),
         ...(data.deletedItemIds && data.deletedItemIds.length > 0 ? { deletedItemIds: data.deletedItemIds } : {}),
+        transactionsCount: data.transactions.length,
+        categoriesCount: data.incomeCategories.length + data.expenseCategories.length,
+        recurringRulesCount: data.recurringRules.length,
         updatedAt: new Date().toISOString(),
       },
       { merge: true }
@@ -349,15 +358,17 @@ export async function syncUserDataToCloud(userId: string, data: UserCloudData): 
       await ruleBatch.commit();
     }
   } catch (error) {
-    console.warn('[Firestore Sync] Operação em segundo plano:', error);
+    console.warn('[Firestore Sync] Falha ao gravar no Firestore:', error);
+    throw error;
   }
 }
 
 /**
  * Busca dados da nuvem garantindo que itens apagados (deletedItemIds) nunca retornem
  */
-export async function fetchUserDataFromCloud(userId: string): Promise<UserCloudData | null> {
-  if (!userId || !dbInstance) return null;
+export async function fetchUserDataFromCloud(userId: string): Promise<UserCloudData> {
+  if (!userId) throw new Error('Conta Google não identificada; não foi possível carregar a nuvem.');
+  if (!dbInstance) throw new Error('Firestore indisponível; não foi possível carregar a nuvem.');
 
   try {
     const userDocRef = doc(dbInstance, 'users', userId);
@@ -452,10 +463,21 @@ export async function fetchUserDataFromCloud(userId: string): Promise<UserCloudD
       recurringRules: fetchedRules,
       security,
       deletedItemIds,
+      hasRemoteData:
+        userDocSnap.exists() ||
+        profileSnap.exists() ||
+        budgetSnap.exists() ||
+        catSnaps.size > 0 ||
+        txSnaps.size > 0 ||
+        ruleSnaps.size > 0,
+      hasBudgetConfig: budgetSnap.exists(),
+      hasTransactions: txSnaps.size > 0 || typeof rootUserData?.transactionsCount === 'number',
+      hasCategories: catSnaps.size > 0 || typeof rootUserData?.categoriesCount === 'number',
+      hasRecurringRules: ruleSnaps.size > 0 || typeof rootUserData?.recurringRulesCount === 'number',
     };
   } catch (error) {
-    console.warn('[Firestore Fetch] Fallback para armazenamento local:', error);
-    return null;
+    console.warn('[Firestore Fetch] Falha ao carregar os dados da nuvem:', error);
+    throw error;
   }
 }
 

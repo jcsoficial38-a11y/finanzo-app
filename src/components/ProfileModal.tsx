@@ -878,15 +878,40 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
                     <ShieldCheck className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
                     <span>Status na Nuvem:</span>
                   </span>
-                  <span className="font-semibold text-emerald-700 flex items-center gap-1">
-                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                  <span
+                    className={`font-semibold flex items-center gap-1 ${
+                      cloudSyncState === 'error'
+                        ? 'text-rose-700'
+                        : cloudSyncState === 'syncing'
+                          ? 'text-amber-700'
+                          : 'text-emerald-700'
+                    }`}
+                  >
+                    <span
+                      className={`w-1.5 h-1.5 rounded-full ${
+                        cloudSyncState === 'error'
+                          ? 'bg-rose-500'
+                          : cloudSyncState === 'syncing'
+                            ? 'bg-amber-500 animate-pulse'
+                            : 'bg-emerald-500'
+                      }`}
+                    />
                     <span>
                       {cloudSyncState === 'syncing'
-                        ? 'Sincronizando...'
-                        : 'Firestore Conectado'}
+                        ? 'Salvando na nuvem...'
+                        : cloudSyncState === 'error'
+                          ? 'Falha ao salvar na nuvem'
+                          : cloudSyncState === 'synced'
+                            ? 'Salvo na nuvem'
+                            : 'Conectando à nuvem...'}
                     </span>
                   </span>
                 </div>
+                {cloudSyncState === 'error' && (
+                  <p className="text-[10px] text-rose-700 leading-relaxed">
+                    Seus dados locais permanecem neste aparelho. Tente sincronizar novamente quando a conexão voltar.
+                  </p>
+                )}
 
                 <div className="flex items-center gap-2">
                   <button

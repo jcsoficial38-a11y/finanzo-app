@@ -178,6 +178,8 @@ export function useFinanceStorage() {
   const [authUser, setAuthUser] = useState<FirebaseUser | null>(null);
   const [cloudSyncState, setCloudSyncState] = useState<'idle' | 'syncing' | 'synced' | 'error'>('idle');
   const [lastSyncTime, setLastSyncTime] = useState<Date | null>(null);
+  const [cloudReadyUserId, setCloudReadyUserId] = useState<string | null>(null);
+  const [cloudRetryTrigger, setCloudRetryTrigger] = useState(0);
 
   // Subscribe to Firebase Auth
   useEffect(() => {
@@ -323,9 +325,15 @@ export function useFinanceStorage() {
     recurringRules,
   ]);
 
-  // 4. Hydrate from Cloud Database (Firestore) when user signs in
+  // 4. Hydrate from Firestore before allowing any automatic upload for this account
   useEffect(() => {
-    if (!authUser) return;
+    if (!authUser) {
+      setCloudReadyUserId(null);
+      setCloudSyncState('idle');
+      return;
+    }
+
+    if (cloudReadyUserId === authUser.uid) return;
 
     let isMounted = true;
     const hydrateFromCloud = async () => {
@@ -334,29 +342,18 @@ export function useFinanceStorage() {
         const cloudData = await fetchUserDataFromCloud(authUser.uid);
         if (!isMounted) return;
 
-        // Se houver dados no Firestore para este UID da conta Google:
-        if (
-          cloudData &&
-          (cloudData.transactions.length > 0 ||
-            cloudData.incomeCategories.length > 0 ||
-            cloudData.expenseCategories.length > 0 ||
-            cloudData.userProfile?.name)
-        ) {
+        if (cloudData.hasRemoteData) {
           markHasRealUserData();
-          setTransactions(cloudData.transactions);
-          if (cloudData.incomeCategories.length > 0) {
-            setIncomeCategories(cloudData.incomeCategories);
+          if (cloudData.hasTransactions) {
+            setTransactions(cloudData.transactions);
           }
-          if (cloudData.expenseCategories.length > 0) {
+          if (cloudData.hasCategories) {
+            setIncomeCategories(cloudData.incomeCategories);
             setExpenseCategories(cloudData.expenseCategories);
           }
-          if (cloudData.budgets && Object.keys(cloudData.budgets).length > 0) {
+          if (cloudData.hasBudgetConfig) {
             setBudgets(cloudData.budgets);
-          }
-          if (typeof cloudData.defaultBudget === 'number') {
             setDefaultBudget(cloudData.defaultBudget);
-          }
-          if (cloudData.categoryBudgets && Object.keys(cloudData.categoryBudgets).length > 0) {
             setCategoryBudgets(cloudData.categoryBudgets);
           }
           if (cloudData.userProfile?.name) {
@@ -385,11 +382,11 @@ export function useFinanceStorage() {
               return cloudProfile;
             });
           }
-          if (cloudData.recurringRules && cloudData.recurringRules.length > 0) {
+          if (cloudData.hasRecurringRules) {
             setRecurringRules(cloudData.recurringRules);
           }
         } else {
-          // Primeira conexão desta conta Google: salva os dados locais atuais na nuvem
+          // First sign-in for this account: migrate this device's saved data to Firestore.
           await syncUserDataToCloud(authUser.uid, {
             transactions,
             incomeCategories,
@@ -405,24 +402,29 @@ export function useFinanceStorage() {
             recurringRules,
           });
         }
+
+        if (!isMounted) return;
+        setCloudReadyUserId(authUser.uid);
         setCloudSyncState('synced');
         setLastSyncTime(new Date());
       } catch (err) {
         console.warn('[FinanzoStorage] Sincronização inicial com nuvem:', err);
-        setCloudSyncState('error');
+        if (isMounted) {
+          setCloudSyncState('error');
+        }
       }
     };
 
-    hydrateFromCloud();
+    void hydrateFromCloud();
 
     return () => {
       isMounted = false;
     };
-  }, [authUser?.uid]);
+  }, [authUser?.uid, cloudReadyUserId, cloudRetryTrigger]);
 
-  // 5. Auto-sync to Cloud (Debounced to avoid quota waste)
+  // 5. Auto-sync only after the initial cloud load has completed successfully.
   useEffect(() => {
-    if (!authUser) return;
+    if (!authUser || cloudReadyUserId !== authUser.uid) return;
 
     const timer = setTimeout(async () => {
       try {
@@ -443,11 +445,13 @@ export function useFinanceStorage() {
         console.warn('[FinanzoStorage] Falha no auto-sync da nuvem:', err);
         setCloudSyncState('error');
       }
-    }, 1500);
+    }, 800);
 
     return () => clearTimeout(timer);
   }, [
     authUser?.uid,
+    cloudReadyUserId,
+    cloudRetryTrigger,
     transactions,
     incomeCategories,
     expenseCategories,
@@ -457,6 +461,18 @@ export function useFinanceStorage() {
     userProfile,
     recurringRules,
   ]);
+
+  // Retry a failed cloud read/write automatically when the network comes back.
+  useEffect(() => {
+    if (!authUser) return;
+    const retryWhenOnline = () => {
+      if (cloudSyncState === 'error') {
+        setCloudRetryTrigger((current) => current + 1);
+      }
+    };
+    window.addEventListener('online', retryWhenOnline);
+    return () => window.removeEventListener('online', retryWhenOnline);
+  }, [authUser?.uid, cloudSyncState]);
 
   // Automatically project recurring fixed expenses to all future months (up to 24 months ahead)
   // Only runs when recurringRules changes (instantaneous and lag-free month switching)
@@ -1002,6 +1018,11 @@ export function useFinanceStorage() {
     if (!authUser) {
       return loginWithGoogle();
     }
+    if (cloudReadyUserId !== authUser.uid) {
+      setCloudSyncState('syncing');
+      setCloudRetryTrigger((current) => current + 1);
+      return;
+    }
     setCloudSyncState('syncing');
     try {
       await syncUserDataToCloud(authUser.uid, {
@@ -1020,7 +1041,7 @@ export function useFinanceStorage() {
       console.warn('[FinanzoStorage] Erro no sync manual:', err);
       setCloudSyncState('error');
     }
-  }, [authUser, transactions, incomeCategories, expenseCategories, budgets, defaultBudget, categoryBudgets, userProfile, recurringRules]);
+  }, [authUser, cloudReadyUserId, transactions, incomeCategories, expenseCategories, budgets, defaultBudget, categoryBudgets, userProfile, recurringRules]);
 
   // Protected reset handler (Anti-reset safeguard: protects user data from any automated wipe)
   const resetToInitialData = useCallback(() => {
