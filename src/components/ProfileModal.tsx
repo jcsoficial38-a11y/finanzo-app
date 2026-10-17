@@ -88,7 +88,34 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
   const [avatarUrl, setAvatarUrl] = useState(profile.avatarUrl || '');
   const [avatarColor, setAvatarColor] = useState(profile.avatarColor || '#7dd3fc');
   const [savedSuccess, setSavedSuccess] = useState(false);
+  const [isRedirectingGoogle, setIsRedirectingGoogle] = useState(false);
+  const [googleLoginError, setGoogleLoginError] = useState<string | null>(null);
   const { themeId, setTheme } = useAppTheme();
+
+  // Garante que o estado de loading de redirecionamento nunca trave o botão
+  React.useEffect(() => {
+    if (isRedirectingGoogle) {
+      const timer = setTimeout(() => {
+        setIsRedirectingGoogle(false);
+      }, 3500);
+      return () => clearTimeout(timer);
+    }
+  }, [isRedirectingGoogle]);
+
+  const handleLoginGoogleClick = async () => {
+    setGoogleLoginError(null);
+    setIsRedirectingGoogle(true);
+    try {
+      if (onLoginGoogle) {
+        await onLoginGoogle();
+      }
+    } catch (err: any) {
+      console.warn('[ProfileModal] Erro ao iniciar login Google:', err);
+      setGoogleLoginError(err?.message || 'Falha ao iniciar o login com o Google. Tente novamente.');
+      // Limpeza de estado de loading para permitir clique imediato
+      setIsRedirectingGoogle(false);
+    }
+  };
 
   // Keep modal fields updated whenever profile changes or modal opens
   React.useEffect(() => {
@@ -890,12 +917,23 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
               <div className="space-y-2 pt-1 border-t border-sky-200/60">
                 <button
                   type="button"
-                  onClick={onLoginGoogle}
-                  className="w-full py-2.5 px-3 bg-sky-600 hover:bg-sky-700 active:scale-98 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all shadow-xs"
+                  onClick={handleLoginGoogleClick}
+                  disabled={false}
+                  className="w-full py-2.5 px-3 bg-sky-600 hover:bg-sky-700 active:bg-sky-800 active:scale-98 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all shadow-xs cursor-pointer"
                 >
-                  <Cloud className="w-4 h-4 text-white" />
-                  <span>Conectar com Google (Ativar Nuvem)</span>
+                  <Cloud className={`w-4 h-4 text-white ${isRedirectingGoogle ? 'animate-pulse' : ''}`} />
+                  <span>
+                    {isRedirectingGoogle
+                      ? 'Redirecionando para o Google...'
+                      : 'Fazer Login com o Google'}
+                  </span>
                 </button>
+                {googleLoginError && (
+                  <div className="flex items-center gap-1.5 p-2 bg-rose-50 text-rose-700 rounded-xl text-xs font-medium border border-rose-200 animate-in fade-in">
+                    <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                    <span>{googleLoginError}</span>
+                  </div>
+                )}
                 <p className="text-[10px] text-sky-800/80 text-center">
                   Todos os lançamentos locais serão salvos com segurança no Firebase Firestore.
                 </p>
