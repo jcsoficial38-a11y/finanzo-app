@@ -41,26 +41,12 @@ import {
   RecurringExpenseRule,
 } from '../types/finance';
 
-// 2. INICIALIZAÇÃO SEGURA DO FIREBASE COM VALORES DE FALLBACK LOCAIS:
-const FALLBACK_FIREBASE_CONFIG = {
-  apiKey: "AIzaSyDLxKnZW-_9J8RAspiA7ul7gtE7F63wr_M",
-  authDomain: "finanzo-app-two.firebaseapp.com",
-  projectId: "impressive-superstate-csmzh",
-  storageBucket: "impressive-superstate-csmzh.appspot.com",
-  messagingSenderId: "1079469168199",
-  appId: "1:1079469168199:web:d58392f19152a1c698c362"
-};
-
-const USER_API_KEY = "COLE_AQUI_SUA_API_KEY";
-const RESOLVED_API_KEY = (!USER_API_KEY || USER_API_KEY.trim() === "" || USER_API_KEY.includes("COLE_AQUI"))
-  ? FALLBACK_FIREBASE_CONFIG.apiKey
-  : USER_API_KEY;
-
+// 2. CONFIGURAÇÃO OFICIAL DO FIREBASE:
 export const firebaseConfig = {
-  apiKey: RESOLVED_API_KEY || FALLBACK_FIREBASE_CONFIG.apiKey,
-  authDomain: "finanzo-app-two.firebaseapp.com",
+  apiKey: "AIzaSyDLxKnZW-_9J8RAspiA7ul7gtE7F63wr_M",
+  authDomain: "impressive-superstate-csmzh.firebaseapp.com",
   projectId: "impressive-superstate-csmzh",
-  storageBucket: "impressive-superstate-csmzh.appspot.com",
+  storageBucket: "impressive-superstate-csmzh.firebasestorage.app",
   messagingSenderId: "1079469168199",
   appId: "1:1079469168199:web:d58392f19152a1c698c362"
 };
@@ -157,8 +143,8 @@ export async function checkRedirectResult(): Promise<FirebaseUser | null> {
   }
 }
 
-// Google Sign-In Definitivo por Redirecionamento (signInWithRedirect - sem popup)
-export async function loginWithGoogle(): Promise<void> {
+// Google Sign-In Padrão Limpo (signInWithPopup)
+export async function loginWithGoogle(): Promise<FirebaseUser | null> {
   if (!authInstance || !googleProviderInstance) {
     throw new Error('Serviço Google indisponível no momento. O aplicativo continua ativo no Modo Local.');
   }
@@ -170,10 +156,10 @@ export async function loginWithGoogle(): Promise<void> {
       console.warn('[FirebaseAuth] Aviso na persistência durante login:', persistErr);
     }
 
-    console.log('[FirebaseAuth] Redirecionando para autenticação com Google (signInWithRedirect)...');
-    await signInWithRedirect(authInstance, googleProviderInstance);
+    const result = await signInWithPopup(authInstance, googleProviderInstance);
+    return result.user;
   } catch (err: any) {
-    console.error('[FirebaseAuth] Erro no signInWithRedirect:', err);
+    console.error('[FirebaseAuth] Erro no login Google (signInWithPopup):', err);
     throw err;
   }
 }
