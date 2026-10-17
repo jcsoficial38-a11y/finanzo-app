@@ -78,7 +78,7 @@ try {
     appInstance = !getApps().length ? initializeApp(firebaseConfig) : getApp();
 
     try {
-      dbInstance = getFirestore(appInstance);
+      dbInstance = getFirestore(appInstance, appletConfig.firestoreDatabaseId);
     } catch (errDb) {
       console.warn('[Firestore] Inicialização em modo local:', errDb);
       dbInstance = null;
@@ -86,7 +86,14 @@ try {
 
     try {
       authInstance = getAuth(appInstance);
-      setPersistence(authInstance, browserLocalPersistence).catch(() => {});
+      // Configura persistência local permanente para manter o usuário sempre conectado
+      setPersistence(authInstance, browserLocalPersistence)
+        .then(() => {
+          console.log('[FirebaseAuth] Persistência permanente (browserLocalPersistence) configurada com sucesso.');
+        })
+        .catch((errPersist) => {
+          console.warn('[FirebaseAuth] Aviso ao configurar persistência permanente:', errPersist);
+        });
       try {
         authInstance.useDeviceLanguage();
       } catch {}

@@ -21,23 +21,38 @@ export const LockScreen: React.FC<LockScreenProps> = ({ onUnlock, profile }) => 
   const [showForgotConfirm, setShowForgotConfirm] = useState(false);
   const [isAuthenticatingBio, setIsAuthenticatingBio] = useState(false);
 
-  const pinStatus = getPinStatus();
-  const bioStatus = getBiometricStatus();
-  const hasPin = pinStatus.hasPin && pinStatus.isEnabled;
+  const pinStatus = (() => {
+    try {
+      return getPinStatus();
+    } catch {
+      return { hasPin: false, isEnabled: false };
+    }
+  })();
+
+  const bioStatus = (() => {
+    try {
+      return getBiometricStatus();
+    } catch {
+      return { hasKey: false, isEnabled: false, isRegistered: false, type: 'none' as const };
+    }
+  })();
+
+  const userName = profile?.name || 'JC';
 
   const handleBiometricUnlock = async () => {
     if (isAuthenticatingBio) return;
     setIsAuthenticatingBio(true);
     setErrorMsg('');
     try {
-      const res = await authenticateBiometric(profile.name);
-      if (res.success) {
+      const res = await authenticateBiometric(userName);
+      if (res && res.success) {
         onUnlock();
-      } else if (res.error) {
+      } else if (res && res.error) {
         setErrorMsg(res.error);
       }
-    } catch {
-      setErrorMsg('Falha na autenticação biométrica. Tente novamente.');
+    } catch (err: any) {
+      console.warn('[LockScreen] Falha segura na biometria:', err);
+      setErrorMsg('Biometria indisponível. Digite seu PIN de 4 dígitos abaixo.');
     } finally {
       setIsAuthenticatingBio(false);
     }
@@ -60,17 +75,23 @@ export const LockScreen: React.FC<LockScreenProps> = ({ onUnlock, profile }) => 
     setDigits(nextDigits);
 
     if (nextDigits.length === 4) {
-      if (verifyPin(nextDigits)) {
-        setTimeout(() => {
-          onUnlock();
-        }, 120);
-      } else {
-        setShake(true);
-        setErrorMsg('Senha incorreta. Tente novamente.');
-        setTimeout(() => {
-          setDigits('');
-          setShake(false);
-        }, 500);
+      try {
+        if (verifyPin(nextDigits)) {
+          setTimeout(() => {
+            onUnlock();
+          }, 120);
+        } else {
+          setShake(true);
+          setErrorMsg('Senha incorreta. Tente novamente.');
+          setTimeout(() => {
+            setDigits('');
+            setShake(false);
+          }, 500);
+        }
+      } catch (pinErr) {
+        console.warn('[LockScreen] Erro seguro ao validar PIN:', pinErr);
+        setErrorMsg('Erro na verificação. Tente novamente.');
+        setDigits('');
       }
     }
   };
@@ -154,13 +175,12 @@ export const LockScreen: React.FC<LockScreenProps> = ({ onUnlock, profile }) => 
           </span>
         </button>
 
-        {/* 4 PIN Dots */}
-        {hasPin && (
-          <div
-            className={`flex items-center justify-center gap-4 py-1 ${
-              shake ? 'animate-bounce' : ''
-            }`}
-          >
+        {/* 4 PIN Dots (sempre visíveis para feedback do teclado numérico) */}
+        <div
+          className={`flex items-center justify-center gap-4 py-1 ${
+            shake ? 'animate-bounce' : ''
+          }`}
+        >
             {[0, 1, 2, 3].map((index) => {
               const isFilled = digits.length > index;
               return (
@@ -175,7 +195,6 @@ export const LockScreen: React.FC<LockScreenProps> = ({ onUnlock, profile }) => 
               );
             })}
           </div>
-        )}
 
         {errorMsg && (
           <div className="flex items-center gap-1.5 text-xs text-rose-400 font-medium animate-in fade-in">

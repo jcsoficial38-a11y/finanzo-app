@@ -339,7 +339,31 @@ export function useFinanceStorage() {
             setCategoryBudgets(cloudData.categoryBudgets);
           }
           if (cloudData.userProfile?.name) {
-            setUserProfile(cloudData.userProfile);
+            const cloudProfile = cloudData.userProfile;
+            const isCloudGeneric =
+              cloudProfile.name.trim().toLowerCase() === 'usuário' ||
+              cloudProfile.name.trim().toLowerCase() === 'usuario';
+
+            setUserProfile((prev) => {
+              const isPrevGeneric =
+                !prev.name ||
+                prev.name.trim().toLowerCase() === 'usuário' ||
+                prev.name.trim().toLowerCase() === 'usuario';
+
+              if (!isPrevGeneric && isCloudGeneric) {
+                // Keep local real name, merge cloud photo if missing locally
+                const merged = {
+                  ...cloudProfile,
+                  name: prev.name,
+                  login: prev.login,
+                  avatarUrl: prev.avatarUrl || cloudProfile.avatarUrl || '',
+                };
+                saveStoredUserProfile(merged);
+                return merged;
+              }
+              saveStoredUserProfile(cloudProfile);
+              return cloudProfile;
+            });
           }
           if (cloudData.recurringRules && cloudData.recurringRules.length > 0) {
             setRecurringRules(cloudData.recurringRules);
@@ -636,10 +660,26 @@ export function useFinanceStorage() {
 
   const updateUserProfile = useCallback((updates: Partial<UserProfile>) => {
     markHasRealUserData();
-    setUserProfile((prev) => ({
-      ...prev,
-      ...updates,
-    }));
+    setUserProfile((prev) => {
+      const next: UserProfile = {
+        ...prev,
+        ...updates,
+      };
+      saveStoredUserProfile(next);
+      return next;
+    });
+  }, []);
+
+  // Listen to profile updates dispatched from anywhere in the app
+  useEffect(() => {
+    const handleProfileEvent = (event: Event) => {
+      const customEvent = event as CustomEvent<UserProfile>;
+      if (customEvent.detail) {
+        setUserProfile(customEvent.detail);
+      }
+    };
+    window.addEventListener(PROFILE_UPDATE_EVENT, handleProfileEvent);
+    return () => window.removeEventListener(PROFILE_UPDATE_EVENT, handleProfileEvent);
   }, []);
 
   // Transaction creation

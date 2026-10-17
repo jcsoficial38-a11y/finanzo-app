@@ -75,8 +75,28 @@ export default function App() {
   const [isCategoryModalOpen, setIsCategoryModalOpen] = useState(false);
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
 
-  // 4-Digit PIN & Biometric Lock State (Garante navegação 100% liberada na abertura)
-  const [isLocked, setIsLocked] = useState<boolean>(false);
+  // 4-Digit PIN & Biometric Lock State:
+  // Ao abrir o aplicativo, verifica se há senha PIN ou biometria ativa. Se houver, renderiza PRIMEIRO a LockScreen
+  const [isLocked, setIsLocked] = useState<boolean>(() => {
+    try {
+      const pin = getPinStatus();
+      const bio = getBiometricStatus();
+      return Boolean((pin.hasPin && pin.isEnabled) || (bio.hasKey && bio.isEnabled));
+    } catch (err) {
+      console.warn('[App] Erro seguro ao verificar bloqueio inicial:', err);
+      return false;
+    }
+  });
+
+  // Se houver senha/biometria cadastrada, RENDERIZE PRIMEIRO o componente 'LockScreen.tsx' antes de dar acesso ao painel
+  if (isLocked) {
+    return (
+      <LockScreen
+        profile={userProfile}
+        onUnlock={() => setIsLocked(false)}
+      />
+    );
+  }
 
   // Combine income and expense categories for lookup
   const allCategories = [...incomeCategories, ...expenseCategories];
@@ -376,14 +396,7 @@ export default function App() {
         }}
       />
 
-      {/* 4-Digit PIN Lock Screen overlay when app is locked */}
-      {isLocked && (
-        <LockScreen
-          profile={userProfile}
-          onUnlock={() => setIsLocked(false)}
-        />
-      )}
-    </div>
+      </div>
   </CurrencyVisibilityProvider>
   );
 }
