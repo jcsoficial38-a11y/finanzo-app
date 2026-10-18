@@ -6,7 +6,6 @@ import {
   Layers,
   ShoppingBag,
   CreditCard,
-  Plus,
   ArrowDownLeft,
   ArrowUpRight,
   AlertTriangle,
@@ -382,13 +381,6 @@ export const TransactionsList: React.FC<TransactionsListProps> = ({
                 : 'Nenhum lançamento cadastrado para este período.'}
             </p>
           </div>
-          <button
-            onClick={onOpenAddModal}
-            className="inline-flex items-center gap-1.5 px-4 py-2 bg-slate-800 text-white rounded-xl text-xs font-semibold hover:bg-slate-900 transition-colors shadow-xs"
-          >
-            <Plus className="w-4 h-4" />
-            Novo Lançamento
-          </button>
         </div>
       ) : (
         <div className="space-y-3">
