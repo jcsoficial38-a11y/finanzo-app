@@ -11,7 +11,9 @@
 import { initializeApp, getApps, getApp, FirebaseApp } from 'firebase/app';
 import {
   getAuth,
+  initializeAuth,
   setPersistence,
+  indexedDBLocalPersistence,
   browserLocalPersistence,
   GoogleAuthProvider,
   signInWithPopup,
@@ -81,15 +83,23 @@ try {
     }
 
     try {
-      authInstance = getAuth(appInstance);
-      // Configura persistência local permanente para manter o usuário sempre conectado
-      setPersistence(authInstance, browserLocalPersistence)
-        .then(() => {
-          console.log('[FirebaseAuth] Persistência permanente (browserLocalPersistence) configurada com sucesso.');
-        })
-        .catch((errPersist) => {
-          console.warn('[FirebaseAuth] Aviso ao configurar persistência permanente:', errPersist);
+      try {
+        authInstance = initializeAuth(appInstance, {
+          persistence: [indexedDBLocalPersistence, browserLocalPersistence],
         });
+        console.log('[FirebaseAuth] Persistência celular/web com indexedDBLocalPersistence configurada com sucesso.');
+      } catch {
+        const fallbackAuth = getAuth(appInstance);
+        authInstance = fallbackAuth;
+        setPersistence(fallbackAuth, indexedDBLocalPersistence)
+          .catch(() => setPersistence(fallbackAuth, browserLocalPersistence))
+          .then(() => {
+            console.log('[FirebaseAuth] Persistência indexedDBLocalPersistence aplicada.');
+          })
+          .catch((errPersist) => {
+            console.warn('[FirebaseAuth] Aviso ao configurar persistência:', errPersist);
+          });
+      }
       try {
         authInstance.useDeviceLanguage();
       } catch {}
@@ -206,7 +216,7 @@ export async function logoutUser(): Promise<void> {
   }
 }
 
-// Observador onAuthStateChanged para Reconhecimento Imediato
+// Observador onAuthStateChanged para Reconhecimento Imediato e Sessão Persistente
 export function subscribeToAuth(callback: (user: FirebaseUser | null) => void): () => void {
   if (!authInstance) {
     callback(null);
@@ -216,16 +226,29 @@ export function subscribeToAuth(callback: (user: FirebaseUser | null) => void): 
     return onAuthStateChanged(
       authInstance,
       (user) => {
+        // Reconexão suave em segundo plano preservando sessão do usuário
+        if (user) {
+          console.log('[FirebaseAuth] Sessão ativa autenticada:', user.email);
+        } else {
+          console.log('[FirebaseAuth] Nenhuma sessão ativa no momento.');
+        }
         callback(user);
       },
       (error) => {
-        console.warn('[FirebaseAuth] Erro observador de sessão:', error);
-        callback(null);
+        console.warn('[FirebaseAuth] Aviso na verificação de sessão em segundo plano:', error);
+        // Não desconecta abruptamente caso haja currentUser em cache persistente local
+        if (authInstance?.currentUser) {
+          callback(authInstance.currentUser);
+        }
       }
     );
   } catch (err) {
-    console.warn('[FirebaseAuth] Falha ao registrar observador:', err);
-    callback(null);
+    console.warn('[FirebaseAuth] Falha ao registrar observador de autenticação:', err);
+    if (authInstance?.currentUser) {
+      callback(authInstance.currentUser);
+    } else {
+      callback(null);
+    }
     return () => {};
   }
 }
@@ -546,21 +569,76 @@ export async function saveProfileAndSecurityToCloud(
  * Zera todas as transações na nuvem para o usuário
  */
 export async function clearAllTransactionsFromCloud(userId: string): Promise<void> {
-  if (!userId || !dbInstance) return;
+  if (!userId || !dbInstance) {
+    console.warn('[Firestore Clear] Banco de dados em nuvem indisponível.');
+    return;
+  }
   try {
-    const txSnaps = await getDocs(collection(dbInstance, 'users', userId, 'transactions'));
-    const batch = writeBatch(dbInstance);
-    txSnaps.forEach((docSnap) => {
-      batch.delete(docSnap.ref);
-    });
+    // 1. Apaga todos os documentos de transações em lotes seguros de até 400
+    const txColl = collection(dbInstance, 'users', userId, 'transactions');
+    const txSnaps = await getDocs(txColl);
+    const txDocs = txSnaps.docs;
 
-    const ruleSnaps = await getDocs(collection(dbInstance, 'users', userId, 'recurringRules'));
-    ruleSnaps.forEach((docSnap) => {
-      batch.delete(docSnap.ref);
-    });
+    if (txDocs.length > 0) {
+      const chunkSize = 400;
+      for (let i = 0; i < txDocs.length; i += chunkSize) {
+        const chunk = txDocs.slice(i, i + chunkSize);
+        try {
+          const batch = writeBatch(dbInstance);
+          chunk.forEach((d) => batch.delete(d.ref));
+          await batch.commit();
+        } catch (batchErr) {
+          console.warn('[Firestore Clear] Falha no writeBatch, executando deleteDoc individual:', batchErr);
+          await Promise.allSettled(chunk.map((d) => deleteDoc(d.ref)));
+        }
+      }
+    }
 
-    await batch.commit();
+    // 2. Apaga todas as regras recorrentes na nuvem
+    const ruleColl = collection(dbInstance, 'users', userId, 'recurringRules');
+    const ruleSnaps = await getDocs(ruleColl);
+    const ruleDocs = ruleSnaps.docs;
+
+    if (ruleDocs.length > 0) {
+      const chunkSize = 400;
+      for (let i = 0; i < ruleDocs.length; i += chunkSize) {
+        const chunk = ruleDocs.slice(i, i + chunkSize);
+        try {
+          const batch = writeBatch(dbInstance);
+          chunk.forEach((d) => batch.delete(d.ref));
+          await batch.commit();
+        } catch (batchErr) {
+          console.warn('[Firestore Clear] Falha no writeBatch de regras, executando deleteDoc individual:', batchErr);
+          await Promise.allSettled(chunk.map((d) => deleteDoc(d.ref)));
+        }
+      }
+    }
+
+    // 3. Atualiza o documento raiz do usuário no Firestore registrando totalTransactions: 0
+    try {
+      const userDocRef = doc(dbInstance, 'users', userId);
+      await setDoc(
+        userDocRef,
+        {
+          totalTransactions: 0,
+          transactionsClearedAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        },
+        { merge: true }
+      );
+    } catch (eDoc) {
+      console.warn('[Firestore Clear] Aviso ao atualizar documento raiz:', eDoc);
+    }
+
+    console.log(`[Firestore Clear] Exclusão definitiva concluída: ${txDocs.length} transações e ${ruleDocs.length} regras apagadas da nuvem.`);
   } catch (error) {
     console.warn('[Firestore Clear] Erro ao zerar histórico:', error);
+    try {
+      const txColl = collection(dbInstance, 'users', userId, 'transactions');
+      const txSnaps = await getDocs(txColl);
+      await Promise.allSettled(txSnaps.docs.map((d) => deleteDoc(d.ref)));
+    } catch (fallbackErr) {
+      console.warn('[Firestore Clear] Erro no fallback final:', fallbackErr);
+    }
   }
 }

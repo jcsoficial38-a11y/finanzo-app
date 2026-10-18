@@ -58,7 +58,7 @@ interface ProfileModalProps {
   onUpdateProfile: (updates: Partial<UserProfile>) => void;
   onExportCSV?: () => void;
   onPinChange?: () => void;
-  onClearTransactions?: () => void;
+  onClearTransactions?: () => void | Promise<void>;
   authUser?: any;
   cloudSyncState?: 'idle' | 'syncing' | 'synced' | 'error';
   onLoginGoogle?: () => Promise<any> | void;
@@ -151,12 +151,21 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
   const [showClearConfirmModal, setShowClearConfirmModal] = useState(false);
   const [clearSuccess, setClearSuccess] = useState('');
 
-  const handleConfirmClearTransactions = () => {
+  const [isClearing, setIsClearing] = useState(false);
+
+  const handleConfirmClearTransactions = async () => {
     if (onClearTransactions) {
-      onClearTransactions();
-      setShowClearConfirmModal(false);
-      setClearSuccess('Histórico de transações zerado com sucesso!');
-      setTimeout(() => setClearSuccess(''), 3500);
+      setIsClearing(true);
+      try {
+        await onClearTransactions();
+        setShowClearConfirmModal(false);
+        setClearSuccess('Histórico de transações zerado com sucesso!');
+        setTimeout(() => setClearSuccess(''), 3500);
+      } catch (err) {
+        console.warn('Erro ao zerar transações:', err);
+      } finally {
+        setIsClearing(false);
+      }
     }
   };
 
@@ -1137,10 +1146,11 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
               <button
                 type="button"
                 onClick={handleConfirmClearTransactions}
-                className="flex-1 py-2.5 px-3 bg-rose-600 hover:bg-rose-700 active:scale-98 text-white rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 shadow-xs min-h-[42px]"
+                disabled={isClearing}
+                className="flex-1 py-2.5 px-3 bg-rose-600 hover:bg-rose-700 active:scale-98 disabled:opacity-50 text-white rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 shadow-xs min-h-[42px]"
               >
                 <Trash2 className="w-3.5 h-3.5 text-white" />
-                <span>Sim, Apagar Tudo</span>
+                <span>{isClearing ? 'Apagando...' : 'Sim, Apagar Tudo'}</span>
               </button>
             </div>
           </div>

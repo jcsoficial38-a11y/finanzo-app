@@ -32,7 +32,7 @@ import { ActiveTab } from './types/finance';
 import { formatCurrency } from './utils/formatters';
 import { exportMonthToCSV } from './utils/csvExport';
 import { CurrencyVisibilityProvider } from './context/CurrencyVisibilityContext';
-import { Plus, ArrowRight, PieChart, Sparkles, UserCheck, FileSpreadsheet, Calendar, Layers } from 'lucide-react';
+import { Plus, ArrowRight, PieChart, Sparkles, UserCheck, Calendar, Layers } from 'lucide-react';
 
 export default function App() {
   const {
@@ -237,14 +237,6 @@ export default function App() {
                 </div>
                 <div className="flex items-center gap-1.5">
                   <button
-                    onClick={handleExportCSV}
-                    title="Exportar resumo e lançamentos em CSV"
-                    className="px-2.5 py-1.5 bg-white border border-slate-200 hover:bg-teal-50 hover:border-teal-200 text-slate-700 hover:text-teal-800 rounded-xl text-xs font-semibold flex items-center gap-1.5 shadow-2xs transition-colors active:scale-95 cursor-pointer"
-                  >
-                    <FileSpreadsheet className="w-3.5 h-3.5 text-teal-600" />
-                    <span className="hidden sm:inline">Exportar CSV</span>
-                  </button>
-                  <button
                     onClick={() => setIsAddModalOpen(true)}
                     className="px-3 py-1.5 bg-slate-900 text-white rounded-xl text-xs font-semibold flex items-center gap-1 shadow-xs hover:bg-slate-800 transition-colors cursor-pointer"
                   >
@@ -288,7 +280,6 @@ export default function App() {
                 onDeleteTransaction={deleteTransaction}
                 onUpdateTransaction={updateTransaction}
                 onOpenAddModal={() => setIsAddModalOpen(true)}
-                onExportCSV={handleExportCSV}
                 defaultPageSize="all"
               />
             </div>

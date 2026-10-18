@@ -11,7 +11,6 @@ import {
   ArrowUpRight,
   AlertTriangle,
   X,
-  FileSpreadsheet,
   Download,
   Pencil,
   Repeat,
@@ -206,35 +205,22 @@ export const TransactionsList: React.FC<TransactionsListProps> = ({
       )}
       {/* Search & Filter Header */}
       <div className="bg-white p-3 rounded-3xl border border-slate-200/70 shadow-xs space-y-2.5">
-        {/* Search input and Export CSV button */}
-        <div className="flex items-center gap-2">
-          <div className="relative flex-1">
-            <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-            <input
-              type="text"
-              placeholder="Buscar lançamentos ou categorias..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-9 pr-8 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 placeholder-slate-400 focus:outline-hidden focus:border-teal-500 focus:bg-white transition-all"
-            />
-            {searchQuery && (
-              <button
-                onClick={() => setSearchQuery('')}
-                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
-              >
-                <X className="w-3.5 h-3.5" />
-              </button>
-            )}
-          </div>
-
-          {onExportCSV && (
+        {/* Search input */}
+        <div className="relative">
+          <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+          <input
+            type="text"
+            placeholder="Buscar lançamentos ou categorias..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="w-full pl-9 pr-8 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 placeholder-slate-400 focus:outline-hidden focus:border-teal-500 focus:bg-white transition-all"
+          />
+          {searchQuery && (
             <button
-              onClick={onExportCSV}
-              title="Exportar resumo e lançamentos do mês em CSV"
-              className="h-8.5 px-2.5 bg-slate-50 hover:bg-teal-50 border border-slate-200 hover:border-teal-200 text-slate-700 hover:text-teal-800 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-colors shrink-0 shadow-2xs active:scale-95"
+              onClick={() => setSearchQuery('')}
+              className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
             >
-              <FileSpreadsheet className="w-3.5 h-3.5 text-teal-600" />
-              <span className="hidden xs:inline">Exportar CSV</span>
+              <X className="w-3.5 h-3.5" />
             </button>
           )}
         </div>

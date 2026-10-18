@@ -30,6 +30,7 @@ import {
   markHasRealUserData,
   requestPersistentStorage,
   getFromIndexedDB,
+  saveToIndexedDB,
 } from '../utils/persistentDatabase';
 import {
   subscribeToAuth,
@@ -106,11 +107,7 @@ export function useFinanceStorage() {
         categoryId: normalizeCategoryId(t.categoryId),
       }));
     }
-    // If user already had data, do NOT regenerate sample data
-    if (hasRealUserData()) {
-      return [];
-    }
-    return getInitialTransactions();
+    return [];
   });
 
   // Budgets map: { '2026-09': 3500 }
@@ -168,10 +165,7 @@ export function useFinanceStorage() {
         categoryId: normalizeCategoryId(r.categoryId),
       }));
     }
-    if (hasRealUserData()) {
-      return [];
-    }
-    return getInitialRecurringRules();
+    return [];
   });
 
   // Firebase Authentication & Cloud Database Sync State
@@ -210,7 +204,11 @@ export function useFinanceStorage() {
         const dbTxs = await getFromIndexedDB<Transaction[]>(PERSISTENT_STORAGE_KEYS.TRANSACTIONS);
         if (dbTxs && Array.isArray(dbTxs) && dbTxs.length > 0) {
           setTransactions((prev) => {
-            if (prev.length === 0) {
+            const stored = safeGetLocalStorage<Transaction[] | null>(PERSISTENT_STORAGE_KEYS.TRANSACTIONS, null);
+            if (stored && Array.isArray(stored) && stored.length === 0) {
+              return [];
+            }
+            if (prev.length === 0 && !hasRealUserData()) {
               return dbTxs;
             }
             return prev;
@@ -966,14 +964,18 @@ export function useFinanceStorage() {
 
   // Clear all transactions history (Zerar Histórico de Transações / Limpar Dados Salvos)
   // Zera todo o histórico de lançamentos locais para 0 transações, mantendo perfil, categorias e senhas
-  const clearAllTransactions = useCallback(() => {
-    // 1. Clear in-memory transactions and recurring rules
+  const clearAllTransactions = useCallback(async () => {
+    // 1. Clear in-memory transactions and recurring rules immediately so UI renders 0
     setTransactions([]);
     setRecurringRules([]);
 
     // 2. Clear persisted transactions and recurring rules in LocalStorage and IndexedDB
     safeSetLocalStorage(PERSISTENT_STORAGE_KEYS.TRANSACTIONS, []);
     safeSetLocalStorage(PERSISTENT_STORAGE_KEYS.RECURRING_RULES, []);
+    try {
+      await saveToIndexedDB(PERSISTENT_STORAGE_KEYS.TRANSACTIONS, []);
+      await saveToIndexedDB(PERSISTENT_STORAGE_KEYS.RECURRING_RULES, []);
+    } catch {}
 
     // 3. Mark that user has interacted with data so sample transactions are never re-populated
     markHasRealUserData();
@@ -991,9 +993,16 @@ export function useFinanceStorage() {
       savedAt: Date.now(),
     });
 
-    // 5. Clear from cloud if logged in
-    if (authUser) {
-      clearAllTransactionsFromCloud(authUser.uid).catch(() => {});
+    // 5. Exclusão definitiva direta do banco Firestore na nuvem
+    if (authUser?.uid) {
+      setCloudSyncState('syncing');
+      try {
+        await clearAllTransactionsFromCloud(authUser.uid);
+        setCloudSyncState('synced');
+        setLastSyncTime(new Date());
+      } catch (err) {
+        console.warn('[FinanzoStorage] Falha ao zerar no Firestore:', err);
+      }
     }
   }, [authUser, incomeCategories, expenseCategories, budgets, defaultBudget, categoryBudgets, userProfile]);
 
