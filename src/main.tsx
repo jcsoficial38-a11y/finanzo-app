@@ -27,11 +27,12 @@ function mountAppDirectly() {
   const rootElement = document.getElementById('root');
   if (!rootElement) return;
 
-  if ((rootElement as any)._finanzoAppMounted) return;
-  (rootElement as any)._finanzoAppMounted = true;
-
   try {
-    const root = createRoot(rootElement);
+    let root = (rootElement as any)._reactRoot;
+    if (!root) {
+      root = createRoot(rootElement);
+      (rootElement as any)._reactRoot = root;
+    }
     root.render(
       <StrictMode>
         <ThemeProvider>

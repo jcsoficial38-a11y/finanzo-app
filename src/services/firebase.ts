@@ -66,10 +66,18 @@ try {
     appInstance = !getApps().length ? initializeApp(firebaseConfig) : getApp();
 
     try {
-      dbInstance = getFirestore(appInstance, appletConfig.firestoreDatabaseId);
+      if (appletConfig.firestoreDatabaseId && appletConfig.firestoreDatabaseId !== '(default)') {
+        dbInstance = getFirestore(appInstance, appletConfig.firestoreDatabaseId);
+      } else {
+        dbInstance = getFirestore(appInstance);
+      }
     } catch (errDb) {
-      console.warn('[Firestore] Inicialização em modo local:', errDb);
-      dbInstance = null;
+      try {
+        dbInstance = getFirestore(appInstance);
+      } catch (e2) {
+        console.warn('[Firestore] Inicialização em modo local:', errDb, e2);
+        dbInstance = null;
+      }
     }
 
     try {
