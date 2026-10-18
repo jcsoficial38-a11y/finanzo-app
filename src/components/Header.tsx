@@ -3,7 +3,6 @@ import {
   ChevronLeft,
   ChevronRight,
   Calendar,
-  SlidersHorizontal,
   Eye,
   EyeOff,
 } from 'lucide-react';
@@ -20,7 +19,7 @@ interface HeaderProps {
   onPrevMonth: () => void;
   onNextMonth: () => void;
   onSelectMonth: (monthKey: string) => void;
-  onOpenBudgetModal: () => void;
+  onOpenBudgetModal?: () => void;
   onOpenProfileModal: () => void;
   onResetData?: () => void;
   isCloudConnected?: boolean;
@@ -96,16 +95,6 @@ export const Header: React.FC<HeaderProps> = ({
                   <span className="hidden sm:inline">Valores</span>
                 </>
               )}
-            </button>
-
-            {/* Budget Button */}
-            <button
-              onClick={onOpenBudgetModal}
-              title="Definir Orçamento do Mês"
-              className="h-8 px-2 rounded-xl text-xs font-medium text-slate-600 hover:text-slate-900 hover:bg-slate-100 flex items-center gap-1 transition-colors"
-            >
-              <SlidersHorizontal className="w-3.5 h-3.5 text-slate-500" />
-              <span className="hidden xs:inline">Orçamento</span>
             </button>
 
             {/* Profile Avatar & Name Trigger Button */}
