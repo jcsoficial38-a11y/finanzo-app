@@ -101,6 +101,11 @@ export const LockScreen: React.FC<LockScreenProps> = ({ onUnlock, profile }) => 
     setDigits((prev) => prev.slice(0, -1));
   };
 
+  const handleClearAll = () => {
+    setErrorMsg('');
+    setDigits('');
+  };
+
   const handleResetSecurity = () => {
     removePin();
     removeBiometric();
@@ -114,6 +119,8 @@ export const LockScreen: React.FC<LockScreenProps> = ({ onUnlock, profile }) => 
         handleDigit(e.key);
       } else if (e.key === 'Backspace') {
         handleDelete();
+      } else if (e.key === 'Escape' || e.key.toLowerCase() === 'c') {
+        handleClearAll();
       }
     };
     window.addEventListener('keydown', handleKeyDown);
@@ -216,17 +223,16 @@ export const LockScreen: React.FC<LockScreenProps> = ({ onUnlock, profile }) => 
             </button>
           ))}
 
-          {/* Row 4 Col 1: BIOMETRIA / DIGITAL (Always visible next to 0) */}
+          {/* Row 4 Col 1: Limpar Tudo ('C') */}
           <button
             type="button"
-            onClick={handleBiometricUnlock}
-            disabled={isAuthenticatingBio}
-            title="Desbloquear com Biometria / Digital"
-            aria-label="Desbloquear com Biometria"
-            className="h-16 rounded-2xl bg-teal-500/20 hover:bg-teal-500/30 active:bg-teal-500/50 border border-teal-500/40 text-teal-300 transition-all active:scale-95 flex flex-col items-center justify-center gap-0.5 shadow-xs"
+            onClick={handleClearAll}
+            title="Limpar todos os dígitos (C)"
+            aria-label="Limpar todos os dígitos"
+            className="h-16 rounded-2xl bg-slate-800/60 hover:bg-slate-700/80 active:bg-rose-500/30 text-slate-300 hover:text-white transition-all active:scale-95 flex flex-col items-center justify-center gap-0.5 shadow-xs cursor-pointer group"
           >
-            <Fingerprint className="w-6 h-6 text-teal-400" />
-            <span className="text-[9px] font-bold tracking-tight">Digital</span>
+            <span className="text-xl font-bold tracking-tight text-slate-200 group-hover:text-white">C</span>
+            <span className="text-[9px] font-semibold tracking-tight text-slate-400 group-hover:text-slate-300">Limpar</span>
           </button>
 
           {/* Row 4 Col 2: Number 0 */}
