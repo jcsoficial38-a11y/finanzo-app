@@ -83,26 +83,21 @@ try {
     }
 
     try {
+      // 1. Inicialização correta e oficial do Auth via getAuth(app)
+      authInstance = getAuth(appInstance);
       try {
-        authInstance = initializeAuth(appInstance, {
-          persistence: [indexedDBLocalPersistence, browserLocalPersistence],
-        });
-        console.log('[FirebaseAuth] Persistência celular/web com indexedDBLocalPersistence configurada com sucesso.');
-      } catch {
-        const fallbackAuth = getAuth(appInstance);
-        authInstance = fallbackAuth;
-        setPersistence(fallbackAuth, indexedDBLocalPersistence)
-          .catch(() => setPersistence(fallbackAuth, browserLocalPersistence))
-          .then(() => {
-            console.log('[FirebaseAuth] Persistência indexedDBLocalPersistence aplicada.');
-          })
+        authInstance.useDeviceLanguage();
+      } catch {}
+
+      // Configura persistência permanente com fallback para browserLocalPersistence
+      if (typeof window !== 'undefined') {
+        const authRef = authInstance;
+        setPersistence(authRef, indexedDBLocalPersistence)
+          .catch(() => setPersistence(authRef, browserLocalPersistence))
           .catch((errPersist) => {
             console.warn('[FirebaseAuth] Aviso ao configurar persistência:', errPersist);
           });
       }
-      try {
-        authInstance.useDeviceLanguage();
-      } catch {}
       googleProviderInstance = new GoogleAuthProvider();
       googleProviderInstance.setCustomParameters({ prompt: 'select_account' });
 
@@ -163,46 +158,69 @@ export async function checkRedirectResult(): Promise<FirebaseUser | null> {
 
 // 1. Google Sign-In Oficial 1-Clique (Popup com fallback limpo para Redirect)
 export async function loginWithGoogle(): Promise<FirebaseUser | null> {
-  if (!authInstance || !googleProviderInstance) {
-    throw new Error('Serviço de autenticação temporariamente indisponível. Operando no modo local.');
+  // 1. Obter auth garantido via getAuth(appInstance)
+  let currentAuth = authInstance;
+  if (!currentAuth && appInstance) {
+    try {
+      currentAuth = getAuth(appInstance);
+      authInstance = currentAuth;
+    } catch {}
   }
 
-  try {
-    // Garante a persistência local permanente para manter o usuário sempre logado no celular
-    try {
-      await setPersistence(authInstance, browserLocalPersistence);
-    } catch (persistErr) {
-      console.warn('[FirebaseAuth] Aviso ao reforçar persistência:', persistErr);
-    }
-
-    // Tenta primeiro signInWithPopup (padrão desktop e navegadores modernos)
-    try {
-      const result = await signInWithPopup(authInstance, googleProviderInstance);
-      return result.user;
-    } catch (popupErr: any) {
-      console.warn('[FirebaseAuth] Popup falhou ou foi bloqueado. Verificando fallback...', popupErr);
-      const code = popupErr?.code || '';
-      const message = (popupErr?.message || '').toLowerCase();
-
-      // Detecta se pop-up foi bloqueado, fechado ou se estamos em dispositivo móvel/webview
-      const isBlocked =
-        code === 'auth/popup-blocked' ||
-        code === 'auth/popup-closed-by-user' ||
-        code === 'auth/cancelled-popup-request' ||
-        message.includes('popup') ||
-        isMobileDevice();
-
-      if (isBlocked) {
-        console.log('[FirebaseAuth] Executando fallback seguro para signInWithRedirect...');
-        await signInWithRedirect(authInstance, googleProviderInstance);
-        return null;
-      }
-
-      throw popupErr;
-    }
-  } catch (err: any) {
-    console.error('[FirebaseAuth] Erro no fluxo de autenticação Google:', err);
+  if (!currentAuth) {
+    const err = new Error('Não foi possível conectar com o serviço de autenticação no momento. Tente novamente.');
+    (err as any).friendlyMessage = 'Não foi possível conectar com o serviço de autenticação no momento. Tente novamente.';
     throw err;
+  }
+
+  // 1. Instanciação correta do provedor Google
+  const provider = new GoogleAuthProvider();
+  provider.setCustomParameters({ prompt: 'select_account' });
+
+  try {
+    // 2. Chamada de login segura: signInWithPopup(auth, provider) com EXATAMENTE esses dois parâmetros válidos
+    const result = await signInWithPopup(currentAuth, provider);
+    return result.user;
+  } catch (popupErr: any) {
+    console.warn('[FirebaseAuth] Popup bloqueado ou indisponível. Verificando fallback...', popupErr);
+    const code = popupErr?.code || '';
+    const message = (popupErr?.message || '').toLowerCase();
+
+    // Detecta se pop-up foi bloqueado, fechado ou se estamos em dispositivo móvel/webview
+    const isBlockedOrMobile =
+      code === 'auth/popup-blocked' ||
+      code === 'auth/popup-closed-by-user' ||
+      code === 'auth/cancelled-popup-request' ||
+      message.includes('popup') ||
+      isMobileDevice();
+
+    if (isBlockedOrMobile) {
+      console.log('[FirebaseAuth] Executando fallback seguro com signInWithRedirect(auth, provider)...');
+      try {
+        await signInWithRedirect(currentAuth, provider);
+        return null;
+      } catch (redirectErr: any) {
+        console.warn('[FirebaseAuth] Redirect falhou:', redirectErr);
+        const err = new Error('Não foi possível concluir o login com o Google. Tente novamente.');
+        (err as any).friendlyMessage = 'Não foi possível concluir o login com o Google. Tente novamente.';
+        throw err;
+      }
+    }
+
+    // 3. Tratamento de Erros Amigável (Não exibe auth/argument-error)
+    let friendlyMessage = 'Não foi possível autenticar com o Google. Por favor, tente novamente.';
+    if (code === 'auth/network-request-failed') {
+      friendlyMessage = 'Falha de conexão com a internet. Verifique sua rede e tente novamente.';
+    } else if (code === 'auth/unauthorized-domain') {
+      friendlyMessage = 'Domínio não autorizado no Firebase Console para autenticação Google.';
+    } else if (code === 'auth/operation-not-allowed') {
+      friendlyMessage = 'O provedor Google não está ativado no Firebase Authentication.';
+    }
+
+    const safeError = new Error(friendlyMessage);
+    (safeError as any).code = code;
+    (safeError as any).friendlyMessage = friendlyMessage;
+    throw safeError;
   }
 }
 

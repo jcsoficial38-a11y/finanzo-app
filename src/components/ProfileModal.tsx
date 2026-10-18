@@ -104,14 +104,21 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
     } catch (err: any) {
       console.warn('[ProfileModal] Aviso/Erro seguro no login Google:', err);
       const code = err?.code || '';
+      const rawMessage = (err?.message || '').toLowerCase();
       let msg = 'Não foi possível conectar com o Google no momento. Tente novamente.';
-      if (code === 'auth/network-request-failed') {
+      if (err?.friendlyMessage) {
+        msg = err.friendlyMessage;
+      } else if (code === 'auth/network-request-failed') {
         msg = 'Falha de conexão com a internet. Verifique sua rede e tente novamente.';
       } else if (code === 'auth/popup-blocked') {
-        msg = 'O pop-up de login foi bloqueado pelo seu navegador. Redirecionando...';
+        msg = 'O pop-up de login foi bloqueado pelo seu navegador.';
       } else if (code === 'auth/popup-closed-by-user') {
-        msg = 'A janela do Google foi fechada antes de concluir.';
-      } else if (err?.message) {
+        msg = 'A janela do Google foi fechada antes de concluir o login.';
+      } else if (code === 'auth/cancelled-popup-request') {
+        msg = 'Operação de login cancelada. Tente novamente.';
+      } else if (code === 'auth/argument-error' || rawMessage.includes('argument-error') || rawMessage.includes('auth/')) {
+        msg = 'Não foi possível autenticar com o Google. Por favor, tente novamente em alguns instantes.';
+      } else if (err?.message && !err.message.includes('auth/')) {
         msg = err.message;
       }
       setGoogleLoginError(msg);
