@@ -32,7 +32,7 @@ import { ActiveTab } from './types/finance';
 import { formatCurrency } from './utils/formatters';
 import { exportMonthToCSV } from './utils/csvExport';
 import { CurrencyVisibilityProvider } from './context/CurrencyVisibilityContext';
-import { Plus, ArrowRight, PieChart, Sparkles, UserCheck, Calendar, Layers } from 'lucide-react';
+import { ArrowRight, PieChart, Sparkles, UserCheck, Calendar, Layers } from 'lucide-react';
 
 export default function App() {
   const {
@@ -228,26 +228,15 @@ export default function App() {
           {/* TAB 2: Histórico Completo */}
           {activeTab === 'history' && (
             <div className="space-y-3 animate-in fade-in duration-150">
-              <div className="px-1 flex items-center justify-between">
-                <div>
-                  <h2 className="text-base font-bold text-slate-900">
-                    Histórico de Lançamentos
-                  </h2>
-                  <p className="text-xs text-slate-500">
-                    {historyScope === 'currentMonth'
-                      ? 'Lançamentos registrados para o mês selecionado'
-                      : 'Todos os lançamentos salvos no aplicativo'}
-                  </p>
-                </div>
-                <div className="flex items-center gap-1.5">
-                  <button
-                    onClick={() => setIsAddModalOpen(true)}
-                    className="px-3 py-1.5 bg-slate-900 text-white rounded-xl text-xs font-semibold flex items-center gap-1 shadow-xs hover:bg-slate-800 transition-colors cursor-pointer"
-                  >
-                    <Plus className="w-3.5 h-3.5" />
-                    <span>Novo</span>
-                  </button>
-                </div>
+              <div className="px-1">
+                <h2 className="text-base font-bold text-slate-900">
+                  Histórico de Lançamentos
+                </h2>
+                <p className="text-xs text-slate-500">
+                  {historyScope === 'currentMonth'
+                    ? 'Lançamentos registrados para o mês selecionado'
+                    : 'Todos os lançamentos salvos no aplicativo'}
+                </p>
               </div>
 
               {/* Scope Switcher: Mês Selecionado vs Todos os Lançamentos */}
