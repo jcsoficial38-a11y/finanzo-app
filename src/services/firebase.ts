@@ -306,6 +306,8 @@ export interface UserCloudData {
   budgets: Record<string, number>;
   defaultBudget: number;
   categoryBudgets: Record<string, number>;
+  monthlyIncomes?: Record<string, number>;
+  defaultIncome?: number;
   userProfile?: UserProfile;
   recurringRules: RecurringExpenseRule[];
   security?: UserSecurityCloudData;
@@ -334,6 +336,11 @@ export async function syncUserDataToCloud(userId: string, data: UserCloudData): 
         bio: data.userProfile?.bio || '',
         joinedDate: data.userProfile?.joinedDate || 'Setembro 2026',
         themeColor: data.userProfile?.themeColor || 'sky',
+        budgets: data.budgets,
+        defaultBudget: data.defaultBudget,
+        categoryBudgets: data.categoryBudgets,
+        monthlyIncomes: data.monthlyIncomes || {},
+        defaultIncome: data.defaultIncome ?? 0,
         ...(data.security ? { security: data.security } : {}),
         ...(data.deletedItemIds && data.deletedItemIds.length > 0 ? { deletedItemIds: data.deletedItemIds } : {}),
         updatedAt: new Date().toISOString(),
@@ -363,7 +370,7 @@ export async function syncUserDataToCloud(userId: string, data: UserCloudData): 
       );
     }
 
-    // 2. Orçamentos
+    // 2. Orçamentos e Renda
     const budgetRef = doc(dbInstance, 'users', userId, 'budgetConfig', 'current');
     await setDoc(
       budgetRef,
@@ -372,6 +379,8 @@ export async function syncUserDataToCloud(userId: string, data: UserCloudData): 
         budgets: data.budgets,
         defaultBudget: data.defaultBudget,
         categoryBudgets: data.categoryBudgets,
+        monthlyIncomes: data.monthlyIncomes || {},
+        defaultIncome: data.defaultIncome ?? 0,
         updatedAt: new Date().toISOString(),
       },
       { merge: true }
@@ -504,13 +513,30 @@ export async function fetchUserDataFromCloud(userId: string): Promise<UserCloudD
       }
     });
 
+    // Orçamentos e Renda: busca em budgetConfig e também no documento raiz
+    const cloudBudgets = budgetConfig?.budgets || rootUserData?.budgets || {};
+    const cloudDefaultBudget = typeof budgetConfig?.defaultBudget === 'number'
+      ? budgetConfig.defaultBudget
+      : typeof rootUserData?.defaultBudget === 'number'
+      ? rootUserData.defaultBudget
+      : null;
+    const cloudCategoryBudgets = budgetConfig?.categoryBudgets || rootUserData?.categoryBudgets || {};
+    const cloudMonthlyIncomes = budgetConfig?.monthlyIncomes || rootUserData?.monthlyIncomes || {};
+    const cloudDefaultIncome = typeof budgetConfig?.defaultIncome === 'number'
+      ? budgetConfig.defaultIncome
+      : typeof rootUserData?.defaultIncome === 'number'
+      ? rootUserData.defaultIncome
+      : 0;
+
     return {
       transactions: fetchedTransactions,
       incomeCategories: fetchedCategories.filter((c) => c.type === 'income'),
       expenseCategories: fetchedCategories.filter((c) => c.type === 'expense'),
-      budgets: budgetConfig?.budgets || {},
-      defaultBudget: budgetConfig?.defaultBudget ?? 3500,
-      categoryBudgets: budgetConfig?.categoryBudgets || {},
+      budgets: cloudBudgets,
+      defaultBudget: cloudDefaultBudget ?? 3500,
+      categoryBudgets: cloudCategoryBudgets,
+      monthlyIncomes: cloudMonthlyIncomes,
+      defaultIncome: cloudDefaultIncome,
       userProfile,
       recurringRules: fetchedRules,
       security,
@@ -519,6 +545,43 @@ export async function fetchUserDataFromCloud(userId: string): Promise<UserCloudD
   } catch (error) {
     console.warn('[Firestore Fetch] Fallback para armazenamento local:', error);
     return null;
+  }
+}
+
+/**
+ * Salva Renda e Orçamento Mensal imediatamente no Firestore (sem debounce)
+ */
+export async function saveBudgetAndIncomeToCloud(
+  userId: string,
+  budgets: Record<string, number>,
+  defaultBudget: number,
+  monthlyIncomes?: Record<string, number>,
+  defaultIncome?: number,
+  categoryBudgets?: Record<string, number>
+): Promise<void> {
+  if (!userId || !dbInstance) return;
+  try {
+    const payload = {
+      userId,
+      budgets,
+      defaultBudget,
+      monthlyIncomes: monthlyIncomes || {},
+      defaultIncome: defaultIncome ?? 0,
+      categoryBudgets: categoryBudgets || {},
+      updatedAt: new Date().toISOString(),
+    };
+
+    // 1. Salva imediatamente no documento raiz users/{userId}
+    const userDocRef = doc(dbInstance, 'users', userId);
+    await setDoc(userDocRef, payload, { merge: true });
+
+    // 2. Salva imediatamente na subcoleção users/{userId}/budgetConfig/current
+    const budgetRef = doc(dbInstance, 'users', userId, 'budgetConfig', 'current');
+    await setDoc(budgetRef, payload, { merge: true });
+
+    console.log('[Firestore] Renda e Orçamento salvos imediatamente na nuvem com sucesso.');
+  } catch (error) {
+    console.warn('[Firestore] Erro ao salvar Renda e Orçamento imediatamente:', error);
   }
 }
 

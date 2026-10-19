@@ -18,6 +18,8 @@ export const PERSISTENT_STORAGE_KEYS = {
   TRANSACTIONS: 'finanzo_transactions_v1',
   BUDGETS: 'finanzo_monthly_budgets_v1',
   DEFAULT_BUDGET: 'finanzo_default_budget_v1',
+  MONTHLY_INCOMES: 'finanzo_monthly_incomes_v1',
+  DEFAULT_INCOME: 'finanzo_default_income_v1',
   CATEGORY_BUDGETS: 'finanzo_category_budgets_v1',
   USER_PROFILE: 'finanzo_user_profile_v1',
   RECURRING_RULES: 'finanzo_recurring_fixed_rules_v1',
@@ -34,6 +36,8 @@ export interface MasterBackupPayload {
   budgets: Record<string, number>;
   defaultBudget: number;
   categoryBudgets: Record<string, number>;
+  monthlyIncomes?: Record<string, number>;
+  defaultIncome?: number;
   userProfile: UserProfile;
   recurringRules: RecurringExpenseRule[];
   savedAt: number;

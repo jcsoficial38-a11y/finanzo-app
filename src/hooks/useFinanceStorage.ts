@@ -44,6 +44,7 @@ import {
   deleteTransactionFromCloud,
   clearAllTransactionsFromCloud,
   checkRedirectResult,
+  saveBudgetAndIncomeToCloud,
 } from '../services/firebase';
 import type { User as FirebaseUser } from 'firebase/auth';
 import {
@@ -139,6 +140,23 @@ export function useFinanceStorage() {
     const backup = getMasterSnapshot();
     if (typeof backup?.defaultBudget === 'number') return backup.defaultBudget;
     return DEFAULT_MONTHLY_BUDGET;
+  });
+
+  // Monthly Incomes map: { '2026-10': 5000 }
+  const [monthlyIncomes, setMonthlyIncomes] = useState<Record<string, number>>(() => {
+    const stored = safeGetLocalStorage<Record<string, number> | null>(PERSISTENT_STORAGE_KEYS.MONTHLY_INCOMES, null);
+    if (stored && typeof stored === 'object') return stored;
+    const backup = getMasterSnapshot();
+    if (backup?.monthlyIncomes && typeof backup.monthlyIncomes === 'object') return backup.monthlyIncomes;
+    return {};
+  });
+
+  const [defaultIncome, setDefaultIncome] = useState<number>(() => {
+    const stored = safeGetLocalStorage<number | null>(PERSISTENT_STORAGE_KEYS.DEFAULT_INCOME, null);
+    if (typeof stored === 'number' && !isNaN(stored)) return stored;
+    const backup = getMasterSnapshot();
+    if (typeof backup?.defaultIncome === 'number') return backup.defaultIncome;
+    return 0;
   });
 
   // Category Budgets: { [categoryId]: number }
@@ -260,8 +278,23 @@ export function useFinanceStorage() {
         }
 
         const dbBudgets = await getFromIndexedDB<Record<string, number>>(PERSISTENT_STORAGE_KEYS.BUDGETS);
-        if (dbBudgets) {
-          setBudgets(dbBudgets);
+        if (dbBudgets && typeof dbBudgets === 'object' && Object.keys(dbBudgets).length > 0) {
+          setBudgets((prev) => ({ ...dbBudgets, ...prev }));
+        }
+
+        const dbDefBudget = await getFromIndexedDB<number>(PERSISTENT_STORAGE_KEYS.DEFAULT_BUDGET);
+        if (typeof dbDefBudget === 'number' && !isNaN(dbDefBudget) && dbDefBudget > 0) {
+          setDefaultBudget(dbDefBudget);
+        }
+
+        const dbIncomes = await getFromIndexedDB<Record<string, number>>(PERSISTENT_STORAGE_KEYS.MONTHLY_INCOMES);
+        if (dbIncomes && typeof dbIncomes === 'object' && Object.keys(dbIncomes).length > 0) {
+          setMonthlyIncomes((prev) => ({ ...dbIncomes, ...prev }));
+        }
+
+        const dbDefIncome = await getFromIndexedDB<number>(PERSISTENT_STORAGE_KEYS.DEFAULT_INCOME);
+        if (typeof dbDefIncome === 'number' && !isNaN(dbDefIncome) && dbDefIncome >= 0) {
+          setDefaultIncome(dbDefIncome);
         }
 
         const dbRules = await getFromIndexedDB<RecurringExpenseRule[]>(PERSISTENT_STORAGE_KEYS.RECURRING_RULES);
@@ -284,40 +317,53 @@ export function useFinanceStorage() {
   // 2. Persist with dual-engine (LocalStorage + IndexedDB mirror)
   useEffect(() => {
     safeSetLocalStorage(PERSISTENT_STORAGE_KEYS.INCOME_CATS, incomeCategories);
+    saveToIndexedDB(PERSISTENT_STORAGE_KEYS.INCOME_CATS, incomeCategories).catch(() => {});
   }, [incomeCategories]);
 
   useEffect(() => {
     safeSetLocalStorage(PERSISTENT_STORAGE_KEYS.EXPENSE_CATS, expenseCategories);
+    saveToIndexedDB(PERSISTENT_STORAGE_KEYS.EXPENSE_CATS, expenseCategories).catch(() => {});
   }, [expenseCategories]);
 
   useEffect(() => {
     safeSetLocalStorage(PERSISTENT_STORAGE_KEYS.TRANSACTIONS, transactions);
+    saveToIndexedDB(PERSISTENT_STORAGE_KEYS.TRANSACTIONS, transactions).catch(() => {});
   }, [transactions]);
 
   useEffect(() => {
     safeSetLocalStorage(PERSISTENT_STORAGE_KEYS.BUDGETS, budgets);
+    saveToIndexedDB(PERSISTENT_STORAGE_KEYS.BUDGETS, budgets).catch(() => {});
   }, [budgets]);
 
   useEffect(() => {
     safeSetLocalStorage(PERSISTENT_STORAGE_KEYS.DEFAULT_BUDGET, defaultBudget);
+    saveToIndexedDB(PERSISTENT_STORAGE_KEYS.DEFAULT_BUDGET, defaultBudget).catch(() => {});
   }, [defaultBudget]);
 
   useEffect(() => {
+    safeSetLocalStorage(PERSISTENT_STORAGE_KEYS.MONTHLY_INCOMES, monthlyIncomes);
+    saveToIndexedDB(PERSISTENT_STORAGE_KEYS.MONTHLY_INCOMES, monthlyIncomes).catch(() => {});
+  }, [monthlyIncomes]);
+
+  useEffect(() => {
+    safeSetLocalStorage(PERSISTENT_STORAGE_KEYS.DEFAULT_INCOME, defaultIncome);
+    saveToIndexedDB(PERSISTENT_STORAGE_KEYS.DEFAULT_INCOME, defaultIncome).catch(() => {});
+  }, [defaultIncome]);
+
+  useEffect(() => {
     safeSetLocalStorage(PERSISTENT_STORAGE_KEYS.CATEGORY_BUDGETS, categoryBudgets);
+    saveToIndexedDB(PERSISTENT_STORAGE_KEYS.CATEGORY_BUDGETS, categoryBudgets).catch(() => {});
   }, [categoryBudgets]);
 
   useEffect(() => {
     safeSetLocalStorage(PERSISTENT_STORAGE_KEYS.USER_PROFILE, userProfile);
+    saveToIndexedDB(PERSISTENT_STORAGE_KEYS.USER_PROFILE, userProfile).catch(() => {});
   }, [userProfile]);
 
   useEffect(() => {
     safeSetLocalStorage(PERSISTENT_STORAGE_KEYS.RECURRING_RULES, recurringRules);
+    saveToIndexedDB(PERSISTENT_STORAGE_KEYS.RECURRING_RULES, recurringRules).catch(() => {});
   }, [recurringRules]);
-
-  useEffect(() => {
-    safeSetLocalStorage(PERSISTENT_STORAGE_KEYS.TRASH_TRANSACTIONS, trashTransactions);
-    saveToIndexedDB(PERSISTENT_STORAGE_KEYS.TRASH_TRANSACTIONS, trashTransactions).catch(() => {});
-  }, [trashTransactions]);
 
   useEffect(() => {
     safeSetLocalStorage(PERSISTENT_STORAGE_KEYS.TRASH_TRANSACTIONS, trashTransactions);
@@ -333,6 +379,8 @@ export function useFinanceStorage() {
       budgets,
       defaultBudget,
       categoryBudgets,
+      monthlyIncomes,
+      defaultIncome,
       userProfile,
       recurringRules,
       savedAt: Date.now(),
@@ -344,6 +392,8 @@ export function useFinanceStorage() {
     budgets,
     defaultBudget,
     categoryBudgets,
+    monthlyIncomes,
+    defaultIncome,
     userProfile,
     recurringRules,
   ]);
@@ -385,13 +435,29 @@ export function useFinanceStorage() {
             setExpenseCategories(cloudData.expenseCategories);
           }
           if (cloudData.budgets && Object.keys(cloudData.budgets).length > 0) {
-            setBudgets(cloudData.budgets);
+            setBudgets((prev) => ({ ...prev, ...cloudData.budgets }));
+            safeSetLocalStorage(PERSISTENT_STORAGE_KEYS.BUDGETS, cloudData.budgets);
+            saveToIndexedDB(PERSISTENT_STORAGE_KEYS.BUDGETS, cloudData.budgets).catch(() => {});
           }
-          if (typeof cloudData.defaultBudget === 'number') {
+          if (typeof cloudData.defaultBudget === 'number' && cloudData.defaultBudget > 0) {
             setDefaultBudget(cloudData.defaultBudget);
+            safeSetLocalStorage(PERSISTENT_STORAGE_KEYS.DEFAULT_BUDGET, cloudData.defaultBudget);
+            saveToIndexedDB(PERSISTENT_STORAGE_KEYS.DEFAULT_BUDGET, cloudData.defaultBudget).catch(() => {});
+          }
+          if (cloudData.monthlyIncomes && Object.keys(cloudData.monthlyIncomes).length > 0) {
+            setMonthlyIncomes((prev) => ({ ...prev, ...cloudData.monthlyIncomes }));
+            safeSetLocalStorage(PERSISTENT_STORAGE_KEYS.MONTHLY_INCOMES, cloudData.monthlyIncomes);
+            saveToIndexedDB(PERSISTENT_STORAGE_KEYS.MONTHLY_INCOMES, cloudData.monthlyIncomes).catch(() => {});
+          }
+          if (typeof cloudData.defaultIncome === 'number' && cloudData.defaultIncome >= 0) {
+            setDefaultIncome(cloudData.defaultIncome);
+            safeSetLocalStorage(PERSISTENT_STORAGE_KEYS.DEFAULT_INCOME, cloudData.defaultIncome);
+            saveToIndexedDB(PERSISTENT_STORAGE_KEYS.DEFAULT_INCOME, cloudData.defaultIncome).catch(() => {});
           }
           if (cloudData.categoryBudgets && Object.keys(cloudData.categoryBudgets).length > 0) {
             setCategoryBudgets(cloudData.categoryBudgets);
+            safeSetLocalStorage(PERSISTENT_STORAGE_KEYS.CATEGORY_BUDGETS, cloudData.categoryBudgets);
+            saveToIndexedDB(PERSISTENT_STORAGE_KEYS.CATEGORY_BUDGETS, cloudData.categoryBudgets).catch(() => {});
           }
           if (cloudData.userProfile?.name) {
             const cloudProfile = cloudData.userProfile;
@@ -433,6 +499,8 @@ export function useFinanceStorage() {
             budgets,
             defaultBudget,
             categoryBudgets,
+            monthlyIncomes,
+            defaultIncome,
             userProfile: {
               ...userProfile,
               name: authUser.displayName || userProfile.name,
@@ -481,6 +549,8 @@ export function useFinanceStorage() {
           budgets,
           defaultBudget,
           categoryBudgets,
+          monthlyIncomes,
+          defaultIncome,
           userProfile,
           recurringRules,
           security: {
@@ -510,6 +580,8 @@ export function useFinanceStorage() {
     budgets,
     defaultBudget,
     categoryBudgets,
+    monthlyIncomes,
+    defaultIncome,
     userProfile,
     recurringRules,
   ]);
