@@ -60,6 +60,11 @@ export default function App() {
     updateTransaction,
     deleteTransaction,
     clearAllTransactions,
+    trashTransactions,
+    restoreTransactionFromTrash,
+    restoreAllFromTrash,
+    emptyTrash,
+    deletePermanentlyFromTrash,
     restoreFromBackup,
     authUser,
     cloudSyncState,
@@ -215,7 +220,6 @@ export default function App() {
                   onDeleteTransaction={deleteTransaction}
                   onUpdateTransaction={updateTransaction}
                   onOpenAddModal={() => setIsAddModalOpen(true)}
-                  onExportCSV={handleExportCSV}
                 />
               </div>
             </div>
@@ -381,6 +385,12 @@ export default function App() {
         onUpdateProfile={updateUserProfile}
         onExportCSV={handleExportCSV}
         onClearTransactions={clearAllTransactions}
+        trashTransactions={trashTransactions}
+        categories={allCategories}
+        onRestoreFromTrash={restoreTransactionFromTrash}
+        onRestoreAllFromTrash={restoreAllFromTrash}
+        onEmptyTrash={emptyTrash}
+        onDeletePermanentlyFromTrash={deletePermanentlyFromTrash}
         authUser={authUser}
         cloudSyncState={cloudSyncState}
         onLoginGoogle={loginWithGoogle}

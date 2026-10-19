@@ -40,7 +40,6 @@ interface TransactionsListProps {
     applyToFutureRecurring?: boolean
   ) => void;
   onOpenAddModal?: () => void;
-  onExportCSV?: () => void;
   emptyMessage?: string;
   showSearch?: boolean;
   defaultPageSize?: number | 'all';
@@ -54,7 +53,6 @@ export const TransactionsList: React.FC<TransactionsListProps> = ({
   onDeleteTransaction,
   onUpdateTransaction,
   onOpenAddModal,
-  onExportCSV,
   emptyMessage,
   showSearch = true,
   defaultPageSize = 10,

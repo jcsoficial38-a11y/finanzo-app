@@ -1,13 +1,11 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useMemo } from 'react';
 import {
   X,
   User,
   Camera,
   Mail,
   Check,
-  Sparkles,
   Calendar,
-  Wallet,
   Receipt,
   Trash2,
   Upload,
@@ -23,11 +21,18 @@ import {
   Cloud,
   RefreshCw,
   LogOut,
+  RotateCcw,
+  Sliders,
+  ChevronRight,
+  Sparkles,
+  Info,
 } from 'lucide-react';
-import { UserProfile } from '../types/finance';
+import { UserProfile, Category, TrashTransaction } from '../types/finance';
 import { PASTEL_COLORS } from '../data/initialData';
 import { WhatsAppIcon } from './WhatsAppIcon';
+import { CategoryIcon } from './CategoryIcon';
 import { useAppTheme } from '../context/ThemeContext';
+import { useCurrencyVisibility } from '../context/CurrencyVisibilityContext';
 import { APP_THEMES, ThemeId } from '../utils/themeConfig';
 import {
   getPinStatus,
@@ -64,6 +69,13 @@ interface ProfileModalProps {
   onLoginGoogle?: () => Promise<any> | void;
   onLogoutGoogle?: () => void;
   onSyncNow?: () => void;
+  // Lixeira Local
+  trashTransactions?: TrashTransaction[];
+  categories?: Category[];
+  onRestoreFromTrash?: (id: string) => void;
+  onRestoreAllFromTrash?: () => void;
+  onEmptyTrash?: () => void;
+  onDeletePermanentlyFromTrash?: (id: string) => void;
 }
 
 export const ProfileModal: React.FC<ProfileModalProps> = ({
@@ -81,6 +93,12 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
   onLoginGoogle,
   onLogoutGoogle,
   onSyncNow,
+  trashTransactions = [],
+  categories = [],
+  onRestoreFromTrash,
+  onRestoreAllFromTrash,
+  onEmptyTrash,
+  onDeletePermanentlyFromTrash,
 }) => {
   const [name, setName] = useState(profile.name || 'JC');
   const [login, setLogin] = useState(profile.login || '@jc');
@@ -92,6 +110,51 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
   const [googleLoginError, setGoogleLoginError] = useState<string | null>(null);
 
   const { themeId, setTheme } = useAppTheme();
+  const { formatMoney } = useCurrencyVisibility();
+
+  // Mapeamento rápido de categorias para exibição de ícones e cores na lixeira
+  const categoriesMap = useMemo(() => {
+    const map = new Map<string, Category>();
+    categories.forEach((cat) => map.set(cat.id, cat));
+    return map;
+  }, [categories]);
+
+  // Keep modal fields updated whenever profile changes or modal opens
+  React.useEffect(() => {
+    if (isOpen) {
+      setName(profile.name || 'JC');
+      setLogin(profile.login || '@jc');
+      setBio(profile.bio || '');
+      setAvatarUrl(profile.avatarUrl || '');
+      setAvatarColor(profile.avatarColor || '#7dd3fc');
+    }
+  }, [isOpen, profile]);
+
+  // 4-Digit PIN Security State
+  const [pinStatus, setPinStatus] = useState<PinStatus>(() => getPinStatus());
+  const [isEditingPin, setIsEditingPin] = useState(false);
+  const [pinInput, setPinInput] = useState('');
+  const [pinConfirmInput, setPinConfirmInput] = useState('');
+  const [pinError, setPinError] = useState('');
+  const [pinSuccess, setPinSuccess] = useState('');
+  const [showPinDigits, setShowPinDigits] = useState(false);
+
+  // Biometric Security (Passkey / WebAuthn) State
+  const [bioStatus, setBioStatus] = useState<BiometricStatus>(() => getBiometricStatus());
+  const [isRegisteringBio, setIsRegisteringBio] = useState(false);
+  const [bioSuccess, setBioSuccess] = useState('');
+  const [bioError, setBioError] = useState('');
+
+  // Clear Transactions state & safety confirmation
+  const [showClearConfirmModal, setShowClearConfirmModal] = useState(false);
+  const [showEmptyTrashConfirmModal, setShowEmptyTrashConfirmModal] = useState(false);
+  const [clearSuccess, setClearSuccess] = useState('');
+  const [trashSuccess, setTrashSuccess] = useState('');
+  const [isClearing, setIsClearing] = useState(false);
+
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  if (!isOpen) return null;
 
   // Função oficial de Login Google 1-Clique sem travamento
   const handleLoginGoogleClick = async () => {
@@ -123,42 +186,9 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
       }
       setGoogleLoginError(msg);
     } finally {
-      // Garante que o botão NUNCA fique travado ou desativado
       setIsLoggingIn(false);
     }
   };
-
-  // Keep modal fields updated whenever profile changes or modal opens
-  React.useEffect(() => {
-    if (isOpen) {
-      setName(profile.name || 'JC');
-      setLogin(profile.login || '@jc');
-      setBio(profile.bio || '');
-      setAvatarUrl(profile.avatarUrl || '');
-      setAvatarColor(profile.avatarColor || '#7dd3fc');
-    }
-  }, [isOpen, profile]);
-
-  // 4-Digit PIN Security State
-  const [pinStatus, setPinStatus] = useState<PinStatus>(() => getPinStatus());
-  const [isEditingPin, setIsEditingPin] = useState(false);
-  const [pinInput, setPinInput] = useState('');
-  const [pinConfirmInput, setPinConfirmInput] = useState('');
-  const [pinError, setPinError] = useState('');
-  const [pinSuccess, setPinSuccess] = useState('');
-  const [showPinDigits, setShowPinDigits] = useState(false);
-
-  // Biometric Security (Passkey / WebAuthn) State
-  const [bioStatus, setBioStatus] = useState<BiometricStatus>(() => getBiometricStatus());
-  const [isRegisteringBio, setIsRegisteringBio] = useState(false);
-  const [bioSuccess, setBioSuccess] = useState('');
-  const [bioError, setBioError] = useState('');
-
-  // Clear Transactions state & safety confirmation
-  const [showClearConfirmModal, setShowClearConfirmModal] = useState(false);
-  const [clearSuccess, setClearSuccess] = useState('');
-
-  const [isClearing, setIsClearing] = useState(false);
 
   const handleConfirmClearTransactions = async () => {
     if (onClearTransactions) {
@@ -176,9 +206,14 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
     }
   };
 
-  const fileInputRef = useRef<HTMLInputElement>(null);
-
-  if (!isOpen) return null;
+  const handleConfirmEmptyTrash = () => {
+    if (onEmptyTrash) {
+      onEmptyTrash();
+      setShowEmptyTrashConfirmModal(false);
+      setTrashSuccess('Lixeira local esvaziada permanentemente!');
+      setTimeout(() => setTrashSuccess(''), 3000);
+    }
+  };
 
   const handleSavePin = (e: React.FormEvent) => {
     e.preventDefault();
@@ -198,14 +233,14 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
     try {
       savePin(pinInput);
       setPinStatus(getPinStatus());
-      setPinSuccess('Senha de 4 dígitos salva com sucesso!');
+      setPinSuccess('PIN de 4 dígitos salvo com sucesso!');
       setPinInput('');
       setPinConfirmInput('');
       setIsEditingPin(false);
       onPinChange?.();
       setTimeout(() => setPinSuccess(''), 3000);
     } catch (err: any) {
-      setPinError(err?.message || 'Erro ao salvar a senha.');
+      setPinError(err?.message || 'Erro ao salvar o PIN.');
     }
   };
 
@@ -217,13 +252,13 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
   };
 
   const handleRemovePin = () => {
-    if (window.confirm('Tem certeza que deseja remover a senha de 4 dígitos?')) {
+    if (window.confirm('Tem certeza que deseja remover o PIN de 4 dígitos?')) {
       removePin();
       setPinStatus(getPinStatus());
       setIsEditingPin(false);
       setPinInput('');
       setPinConfirmInput('');
-      setPinSuccess('Senha removida com sucesso.');
+      setPinSuccess('PIN removido com sucesso.');
       onPinChange?.();
       setTimeout(() => setPinSuccess(''), 3000);
     }
@@ -296,28 +331,13 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      // Validate file size (< 2MB)
       if (file.size > 2 * 1024 * 1024) {
-        alert('Por favor, selecione uma imagem de até 2MB.');
+        alert('A imagem deve ter no máximo 2MB.');
         return;
       }
-
       const reader = new FileReader();
       reader.onloadend = () => {
-        if (typeof reader.result === 'string') {
-          const photoResult = reader.result;
-          setAvatarUrl(photoResult);
-          const updated: UserProfile = {
-            ...profile,
-            name: name.trim() || profile.name || 'JC',
-            login: login.trim() || profile.login || '@jc',
-            bio: bio.trim(),
-            avatarUrl: photoResult,
-            avatarColor,
-          };
-          saveStoredUserProfile(updated);
-          onUpdateProfile(updated);
-        }
+        setAvatarUrl(reader.result as string);
       };
       reader.readAsDataURL(file);
     }
@@ -328,16 +348,6 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
-    const updated: UserProfile = {
-      ...profile,
-      name: name.trim() || profile.name || 'JC',
-      login: login.trim() || profile.login || '@jc',
-      bio: bio.trim(),
-      avatarUrl: '',
-      avatarColor,
-    };
-    saveStoredUserProfile(updated);
-    onUpdateProfile(updated);
   };
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -363,7 +373,6 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
     }, 700);
   };
 
-  // User initials for fallback avatar
   const getInitials = (fullName: string) => {
     return calculateInitials(fullName);
   };
@@ -377,17 +386,17 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
         className="w-full max-w-md bg-white rounded-t-3xl sm:rounded-3xl shadow-xl max-h-[92vh] flex flex-col overflow-hidden"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="w-12 h-1 bg-slate-200 rounded-full mx-auto my-3 sm:hidden" />
+        <div className="w-12 h-1 bg-slate-200 rounded-full mx-auto my-3 sm:hidden shrink-0" />
 
         {/* Modal Header */}
-        <div className="flex items-center justify-between px-5 py-3 border-b border-slate-100 shrink-0">
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-full bg-teal-50 text-teal-600 flex items-center justify-center">
+        <div className="flex items-center justify-between px-5 py-3.5 border-b border-slate-100 shrink-0">
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-xl bg-teal-50 text-teal-600 flex items-center justify-center shadow-2xs">
               <User className="w-4 h-4" />
             </div>
             <div>
-              <h3 className="font-bold text-slate-800 text-sm">Perfil do Usuário</h3>
-              <p className="text-[11px] text-slate-400">Edite sua foto, nome e login</p>
+              <h3 className="font-bold text-slate-800 text-sm">Perfil & Configurações</h3>
+              <p className="text-[11px] text-slate-400">Preferências, segurança e sincronização</p>
             </div>
           </div>
           <button
@@ -398,156 +407,171 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
           </button>
         </div>
 
-        {/* Form Body */}
-        <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-5 space-y-4">
-          {/* Avatar Upload Area */}
-          <div className="flex flex-col items-center justify-center py-2">
-            <div className="relative group">
-              {/* Photo or Initials Avatar */}
-              <div
-                className="w-20 h-20 rounded-full flex items-center justify-center overflow-hidden border-2 border-white shadow-md relative"
-                style={{ backgroundColor: avatarUrl ? 'transparent' : avatarColor }}
-              >
-                {avatarUrl ? (
-                  <img
-                    src={avatarUrl}
-                    alt={name}
-                    className="w-full h-full object-cover"
-                  />
-                ) : (
-                  <span className="text-xl font-bold text-slate-800 tracking-wider">
-                    {getInitials(name)}
-                  </span>
+        {/* Menu Body - Lista Vertical Limpa e Organizada */}
+        <div className="flex-1 overflow-y-auto p-4 sm:p-5 space-y-4">
+
+          {/* SEÇÃO 1: FOTO E NOME DO USUÁRIO */}
+          <div className="bg-slate-50/80 rounded-2xl border border-slate-200/80 p-4 space-y-3.5">
+            <div className="flex items-center gap-2">
+              <div className="w-7 h-7 rounded-xl bg-teal-600 text-white flex items-center justify-center shadow-2xs shrink-0">
+                <User className="w-3.5 h-3.5 text-white" />
+              </div>
+              <div>
+                <h4 className="text-xs font-bold text-slate-900">Foto e Nome do Usuário</h4>
+                <p className="text-[11px] text-slate-500">Identificação visual e dados pessoais</p>
+              </div>
+            </div>
+
+            {/* Avatar & Photo Picker */}
+            <div className="flex flex-col items-center justify-center py-1">
+              <div className="relative group">
+                <div
+                  className="w-20 h-20 rounded-full flex items-center justify-center overflow-hidden border-2 border-white shadow-md relative"
+                  style={{ backgroundColor: avatarUrl ? 'transparent' : avatarColor }}
+                >
+                  {avatarUrl ? (
+                    <img
+                      src={avatarUrl}
+                      alt={name}
+                      className="w-full h-full object-cover"
+                    />
+                  ) : (
+                    <span className="text-xl font-bold text-slate-800 tracking-wider">
+                      {getInitials(name)}
+                    </span>
+                  )}
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  className="absolute bottom-0 right-0 w-7 h-7 rounded-full bg-slate-900 text-white flex items-center justify-center shadow-md hover:bg-slate-800 transition-transform active:scale-95 cursor-pointer"
+                  title="Alterar Foto"
+                  aria-label="Alterar Foto"
+                >
+                  <Camera className="w-3.5 h-3.5" />
+                </button>
+              </div>
+
+              <input
+                type="file"
+                ref={fileInputRef}
+                onChange={handleFileUpload}
+                accept="image/*"
+                className="hidden"
+              />
+
+              <div className="flex items-center gap-3 mt-2 text-xs">
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  className="text-teal-700 hover:text-teal-800 font-semibold flex items-center gap-1 cursor-pointer"
+                >
+                  <Upload className="w-3 h-3" />
+                  <span>Enviar Foto</span>
+                </button>
+
+                {avatarUrl && (
+                  <button
+                    type="button"
+                    onClick={handleRemovePhoto}
+                    className="text-rose-600 hover:text-rose-700 font-medium flex items-center gap-1 cursor-pointer"
+                  >
+                    <Trash2 className="w-3 h-3" />
+                    <span>Remover</span>
+                  </button>
                 )}
               </div>
 
-              {/* Upload trigger overlay button */}
-              <button
-                type="button"
-                onClick={() => fileInputRef.current?.click()}
-                className="absolute bottom-0 right-0 w-7 h-7 rounded-full bg-slate-900 text-white flex items-center justify-center shadow-md hover:bg-slate-800 transition-transform active:scale-95"
-                title="Alterar Foto"
-                aria-label="Alterar Foto"
-              >
-                <Camera className="w-3.5 h-3.5" />
-              </button>
-            </div>
-
-            {/* Hidden native file input */}
-            <input
-              type="file"
-              ref={fileInputRef}
-              onChange={handleFileUpload}
-              accept="image/*"
-              className="hidden"
-            />
-
-            {/* Photo Action Links */}
-            <div className="flex items-center gap-3 mt-2 text-xs">
-              <button
-                type="button"
-                onClick={() => fileInputRef.current?.click()}
-                className="text-teal-700 hover:text-teal-800 font-semibold flex items-center gap-1"
-              >
-                <Upload className="w-3 h-3" />
-                <span>Enviar Foto</span>
-              </button>
-
-              {avatarUrl && (
-                <button
-                  type="button"
-                  onClick={handleRemovePhoto}
-                  className="text-rose-600 hover:text-rose-700 font-medium flex items-center gap-1"
-                >
-                  <Trash2 className="w-3 h-3" />
-                  <span>Remover</span>
-                </button>
+              {!avatarUrl && (
+                <div className="mt-2.5 flex items-center gap-1.5">
+                  <span className="text-[11px] text-slate-400 mr-1">Cor de fundo:</span>
+                  {PASTEL_COLORS.slice(0, 6).map((c) => (
+                    <button
+                      key={c.hex}
+                      type="button"
+                      onClick={() => setAvatarColor(c.hex)}
+                      className={`w-5 h-5 rounded-full transition-transform cursor-pointer ${
+                        avatarColor === c.hex ? 'scale-125 ring-2 ring-slate-800' : 'hover:scale-110'
+                      }`}
+                      style={{ backgroundColor: c.hex }}
+                      title={c.name}
+                    />
+                  ))}
+                </div>
               )}
             </div>
 
-            {/* Pastel Background Colors for Initial Avatar */}
-            {!avatarUrl && (
-              <div className="mt-3 flex items-center gap-1.5">
-                <span className="text-[11px] text-slate-400 mr-1">Cor de fundo:</span>
-                {PASTEL_COLORS.slice(0, 6).map((c) => (
-                  <button
-                    key={c.hex}
-                    type="button"
-                    onClick={() => setAvatarColor(c.hex)}
-                    className={`w-5 h-5 rounded-full transition-transform ${
-                      avatarColor === c.hex ? 'scale-125 ring-2 ring-slate-800' : 'hover:scale-110'
-                    }`}
-                    style={{ backgroundColor: c.hex }}
-                    title={c.name}
+            {/* Inputs: Nome, Login, Bio */}
+            <div className="space-y-2.5 pt-1">
+              <div>
+                <label className="block text-[11px] font-semibold text-slate-600 mb-1">
+                  Nome Completo
+                </label>
+                <div className="relative">
+                  <User className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                  <input
+                    type="text"
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    placeholder="Seu nome"
+                    className="w-full pl-9 pr-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-semibold text-slate-800 focus:outline-hidden focus:border-teal-500 transition-all"
                   />
-                ))}
+                </div>
               </div>
-            )}
-          </div>
 
-          {/* Field 1: Nome */}
-          <div>
-            <label className="block text-xs font-semibold text-slate-700 mb-1">
-              Nome
-            </label>
-            <div className="relative">
-              <User className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
-              <input
-                type="text"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder="Seu nome completo"
-                required
-                className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-800 focus:outline-hidden focus:border-teal-500 focus:bg-white transition-all"
-              />
+              <div>
+                <label className="block text-[11px] font-semibold text-slate-600 mb-1">
+                  Login / E-mail
+                </label>
+                <div className="relative">
+                  <Mail className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                  <input
+                    type="text"
+                    value={login}
+                    onChange={(e) => setLogin(e.target.value)}
+                    placeholder="exemplo@email.com"
+                    className="w-full pl-9 pr-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-medium text-slate-800 focus:outline-hidden focus:border-teal-500 transition-all"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-semibold text-slate-600 mb-1">
+                  Meta ou Frase Financeira
+                </label>
+                <input
+                  type="text"
+                  value={bio}
+                  onChange={(e) => setBio(e.target.value)}
+                  placeholder="Ex: Focado em economizar e investir"
+                  className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-medium text-slate-800 focus:outline-hidden focus:border-teal-500 transition-all"
+                />
+              </div>
+
+              <button
+                type="button"
+                onClick={handleSubmit}
+                disabled={!name.trim()}
+                className={`w-full py-2.5 px-3 rounded-xl text-xs font-semibold text-white transition-all flex items-center justify-center gap-1.5 shadow-2xs cursor-pointer ${
+                  savedSuccess ? 'bg-emerald-600' : 'bg-slate-900 hover:bg-slate-800 disabled:opacity-50'
+                }`}
+              >
+                <Check className="w-3.5 h-3.5" />
+                <span>{savedSuccess ? 'Perfil Salvo com Sucesso!' : 'Salvar Dados do Perfil'}</span>
+              </button>
             </div>
           </div>
 
-          {/* Field 2: Login / E-mail */}
-          <div>
-            <label className="block text-xs font-semibold text-slate-700 mb-1">
-              Login / E-mail
-            </label>
-            <div className="relative">
-              <Mail className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
-              <input
-                type="text"
-                value={login}
-                onChange={(e) => setLogin(e.target.value)}
-                placeholder="exemplo@email.com ou usuario"
-                required
-                className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium text-slate-800 focus:outline-hidden focus:border-teal-500 focus:bg-white transition-all"
-              />
-            </div>
-          </div>
-
-          {/* Field 3: Bio / Meta Financeira */}
-          <div>
-            <label className="block text-xs font-semibold text-slate-700 mb-1">
-              Frase ou Meta Financeira
-            </label>
-            <input
-              type="text"
-              value={bio}
-              onChange={(e) => setBio(e.target.value)}
-              placeholder="Ex: Focado em economizar e investir"
-              className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium text-slate-800 focus:outline-hidden focus:border-teal-500 focus:bg-white transition-all"
-            />
-          </div>
-
-          {/* Section: Personalização de Tema e Cores */}
-          <div className="p-3.5 bg-slate-50 rounded-2xl border border-slate-200/80 space-y-3">
+          {/* SEÇÃO 2: TEMAS E VISUAL */}
+          <div className="bg-slate-50/80 rounded-2xl border border-slate-200/80 p-4 space-y-3">
             <div className="flex items-center gap-2">
-              <div className="w-7 h-7 rounded-xl bg-slate-900 text-white flex items-center justify-center shadow-2xs">
-                <Palette className="w-4 h-4 text-white" />
+              <div className="w-7 h-7 rounded-xl bg-indigo-600 text-white flex items-center justify-center shadow-2xs shrink-0">
+                <Palette className="w-3.5 h-3.5 text-white" />
               </div>
               <div>
-                <h4 className="text-xs font-bold text-slate-800">
-                  Tema & Cores do Aplicativo
-                </h4>
-                <p className="text-[11px] text-slate-500">
-                  Alterne entre Azul, Verde, Preto, Amarelo com Preto, etc.
-                </p>
+                <h4 className="text-xs font-bold text-slate-900">Temas e Visual</h4>
+                <p className="text-[11px] text-slate-500">Personalize o estilo visual do app</p>
               </div>
             </div>
 
@@ -595,279 +619,283 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
             </div>
           </div>
 
-          {/* Section: Senha de 4 Dígitos (Bloqueio de Segurança) */}
-          <div className="p-3.5 bg-slate-50 rounded-2xl border border-slate-200/80 space-y-3">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <div className="w-7 h-7 rounded-xl bg-teal-50 text-teal-700 flex items-center justify-center">
-                  <Lock className="w-3.5 h-3.5" />
-                </div>
-                <div>
-                  <h4 className="text-xs font-bold text-slate-800">
-                    Senha de 4 Dígitos
-                  </h4>
-                  <p className="text-[11px] text-slate-500">
-                    {pinStatus.hasPin
-                      ? pinStatus.isEnabled
-                        ? 'Bloqueio por senha ativo'
-                        : 'Senha salva, mas bloqueio pausado'
-                      : 'Proteja seu app com senha numérica'}
-                  </p>
-                </div>
+          {/* SEÇÃO 3: SEGURANÇA (SENHA DE 4 DÍGITOS & BIOMETRIA COM BOTÃO SALVAR PIN) */}
+          <div className="bg-slate-50/80 rounded-2xl border border-slate-200/80 p-4 space-y-3.5">
+            <div className="flex items-center gap-2">
+              <div className="w-7 h-7 rounded-xl bg-emerald-600 text-white flex items-center justify-center shadow-2xs shrink-0">
+                <ShieldCheck className="w-3.5 h-3.5 text-white" />
               </div>
-
-              {pinStatus.hasPin && !isEditingPin && (
-                <button
-                  type="button"
-                  onClick={handleTogglePin}
-                  className={`px-2.5 py-1 rounded-xl text-xs font-semibold transition-colors ${
-                    pinStatus.isEnabled
-                      ? 'bg-teal-600 text-white shadow-2xs'
-                      : 'bg-slate-200 text-slate-700 hover:bg-slate-300'
-                  }`}
-                >
-                  {pinStatus.isEnabled ? 'Ativado' : 'Pausado'}
-                </button>
-              )}
+              <div>
+                <h4 className="text-xs font-bold text-slate-900">Segurança & Acesso</h4>
+                <p className="text-[11px] text-slate-500">Senha PIN de 4 dígitos e biometria digital</p>
+              </div>
             </div>
 
-            {pinSuccess && (
-              <div className="flex items-center gap-1.5 p-2 bg-emerald-50 text-emerald-700 rounded-xl text-xs font-medium border border-emerald-200">
-                <ShieldCheck className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-                <span>{pinSuccess}</span>
-              </div>
-            )}
+            {/* Sub-item: PIN de 4 Dígitos */}
+            <div className="p-3 bg-white rounded-xl border border-slate-200/70 space-y-2.5">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Lock className="w-4 h-4 text-teal-600 shrink-0" />
+                  <div>
+                    <span className="text-xs font-bold text-slate-800 block">Senha de 4 Dígitos (PIN)</span>
+                    <span className="text-[10px] text-slate-400 block">
+                      {pinStatus.hasPin
+                        ? pinStatus.isEnabled
+                          ? 'Bloqueio ativo por senha'
+                          : 'Senha salva, bloqueio pausado'
+                        : 'Nenhuma senha configurada'}
+                    </span>
+                  </div>
+                </div>
 
-            {!isEditingPin ? (
-              <div className="flex items-center gap-2 pt-1 border-t border-slate-200/60">
-                {pinStatus.hasPin ? (
-                  <>
+                {pinStatus.hasPin && !isEditingPin && (
+                  <button
+                    type="button"
+                    onClick={handleTogglePin}
+                    className={`px-2.5 py-1 rounded-xl text-xs font-semibold transition-colors cursor-pointer ${
+                      pinStatus.isEnabled
+                        ? 'bg-teal-600 text-white shadow-2xs'
+                        : 'bg-slate-200 text-slate-700 hover:bg-slate-300'
+                    }`}
+                  >
+                    {pinStatus.isEnabled ? 'Ativado' : 'Pausado'}
+                  </button>
+                )}
+              </div>
+
+              {pinSuccess && (
+                <div className="flex items-center gap-1.5 p-2 bg-emerald-50 text-emerald-700 rounded-xl text-xs font-medium border border-emerald-200">
+                  <ShieldCheck className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                  <span>{pinSuccess}</span>
+                </div>
+              )}
+
+              {!isEditingPin ? (
+                <div className="flex items-center gap-2 pt-1 border-t border-slate-100">
+                  {pinStatus.hasPin ? (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setPinError('');
+                          setIsEditingPin(true);
+                        }}
+                        className="flex-1 py-1.5 px-3 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+                      >
+                        <KeyRound className="w-3.5 h-3.5 text-teal-600" />
+                        <span>Alterar PIN</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleRemovePin}
+                        className="py-1.5 px-3 bg-slate-50 hover:bg-rose-50 border border-slate-200 hover:border-rose-200 rounded-xl text-xs font-semibold text-rose-600 transition-colors cursor-pointer"
+                      >
+                        Remover
+                      </button>
+                    </>
+                  ) : (
                     <button
                       type="button"
                       onClick={() => {
                         setPinError('');
                         setIsEditingPin(true);
                       }}
-                      className="flex-1 py-2 px-3 bg-white hover:bg-slate-100 border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 flex items-center justify-center gap-1.5 transition-colors"
+                      className="w-full py-2 px-3 bg-teal-50 hover:bg-teal-100 border border-teal-200 rounded-xl text-xs font-semibold text-teal-800 flex items-center justify-center gap-1.5 transition-colors shadow-2xs cursor-pointer"
                     >
-                      <KeyRound className="w-3.5 h-3.5 text-teal-600" />
-                      <span>Alterar Senha</span>
+                      <Lock className="w-3.5 h-3.5 text-teal-600" />
+                      <span>Configurar Senha de 4 Dígitos</span>
+                    </button>
+                  )}
+                </div>
+              ) : (
+                <div className="space-y-2.5 pt-1 border-t border-slate-100">
+                  <div className="flex items-center justify-between text-xs font-semibold text-slate-700">
+                    <span>{pinStatus.hasPin ? 'Alterar Senha' : 'Nova Senha'}</span>
+                    <button
+                      type="button"
+                      onClick={() => setShowPinDigits(!showPinDigits)}
+                      className="text-slate-400 hover:text-slate-600 flex items-center gap-1 text-[11px] cursor-pointer"
+                    >
+                      {showPinDigits ? (
+                        <>
+                          <EyeOff className="w-3.5 h-3.5" />
+                          <span>Ocultar</span>
+                        </>
+                      ) : (
+                        <>
+                          <Eye className="w-3.5 h-3.5" />
+                          <span>Mostrar</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="block text-[10px] font-semibold text-slate-500 mb-1">
+                        Senha (4 dígitos)
+                      </label>
+                      <input
+                        type={showPinDigits ? 'text' : 'password'}
+                        inputMode="numeric"
+                        pattern="[0-9]*"
+                        maxLength={4}
+                        value={pinInput}
+                        onChange={(e) =>
+                          setPinInput(e.target.value.replace(/\D/g, '').slice(0, 4))
+                        }
+                        placeholder="••••"
+                        className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-center text-sm font-bold tracking-widest text-slate-800 focus:outline-hidden focus:border-teal-500 tabular-nums"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-[10px] font-semibold text-slate-500 mb-1">
+                        Confirmar Senha
+                      </label>
+                      <input
+                        type={showPinDigits ? 'text' : 'password'}
+                        inputMode="numeric"
+                        pattern="[0-9]*"
+                        maxLength={4}
+                        value={pinConfirmInput}
+                        onChange={(e) =>
+                          setPinConfirmInput(
+                            e.target.value.replace(/\D/g, '').slice(0, 4)
+                          )
+                        }
+                        placeholder="••••"
+                        className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-center text-sm font-bold tracking-widest text-slate-800 focus:outline-hidden focus:border-teal-500 tabular-nums"
+                      />
+                    </div>
+                  </div>
+
+                  {pinError && (
+                    <div className="flex items-center gap-1.5 text-[11px] text-rose-600 font-medium">
+                      <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                      <span>{pinError}</span>
+                    </div>
+                  )}
+
+                  <div className="flex gap-2 pt-0.5">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsEditingPin(false);
+                        setPinInput('');
+                        setPinConfirmInput('');
+                        setPinError('');
+                      }}
+                      className="flex-1 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-xl transition-colors cursor-pointer"
+                    >
+                      Cancelar
                     </button>
                     <button
                       type="button"
-                      onClick={handleRemovePin}
-                      className="py-2 px-3 bg-white hover:bg-rose-50 border border-slate-200 hover:border-rose-200 rounded-xl text-xs font-semibold text-rose-600 transition-colors"
+                      onClick={handleSavePin}
+                      disabled={pinInput.length !== 4 || pinConfirmInput.length !== 4}
+                      className="flex-1 py-2 bg-teal-600 hover:bg-teal-700 disabled:opacity-50 text-white text-xs font-bold rounded-xl transition-colors shadow-2xs cursor-pointer flex items-center justify-center gap-1"
+                    >
+                      <Check className="w-3.5 h-3.5" />
+                      <span>Salvar PIN</span>
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Sub-item: Biometria / Digital */}
+            <div className="p-3 bg-white rounded-xl border border-slate-200/70 space-y-2.5">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Fingerprint className="w-4 h-4 text-violet-600 shrink-0" />
+                  <div>
+                    <span className="text-xs font-bold text-slate-800 block">Biometria / Digital (Passkey)</span>
+                    <span className="text-[10px] text-slate-400 block">
+                      {bioStatus.hasKey
+                        ? bioStatus.isEnabled
+                          ? 'Desbloqueio por digital ativo'
+                          : 'Biometria salva, bloqueio pausado'
+                        : 'Desbloqueio com a digital do aparelho'}
+                    </span>
+                  </div>
+                </div>
+
+                {bioStatus.hasKey && (
+                  <button
+                    type="button"
+                    onClick={handleToggleBiometric}
+                    className={`px-2.5 py-1 rounded-xl text-xs font-semibold transition-colors cursor-pointer ${
+                      bioStatus.isEnabled
+                        ? 'bg-violet-600 text-white shadow-2xs'
+                        : 'bg-slate-200 text-slate-700 hover:bg-slate-300'
+                    }`}
+                  >
+                    {bioStatus.isEnabled ? 'Ativado' : 'Pausado'}
+                  </button>
+                )}
+              </div>
+
+              {bioSuccess && (
+                <div className="flex items-center gap-1.5 p-2 bg-emerald-50 text-emerald-700 rounded-xl text-xs font-medium border border-emerald-200 animate-in fade-in">
+                  <ShieldCheck className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                  <span>{bioSuccess}</span>
+                </div>
+              )}
+
+              {bioError && (
+                <div className="flex items-center gap-1.5 p-2 bg-rose-50 text-rose-700 rounded-xl text-xs font-medium border border-rose-200 animate-in fade-in">
+                  <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                  <span>{bioError}</span>
+                </div>
+              )}
+
+              <div className="pt-1 border-t border-slate-100">
+                {bioStatus.hasKey ? (
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={handleTestBiometric}
+                      className="flex-1 py-1.5 px-3 bg-violet-50 hover:bg-violet-100 border border-violet-200 rounded-xl text-xs font-semibold text-violet-800 flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+                    >
+                      <Fingerprint className="w-3.5 h-3.5 text-violet-600" />
+                      <span>Testar Digital</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleRemoveBiometric}
+                      className="py-1.5 px-3 bg-slate-50 hover:bg-rose-50 border border-slate-200 hover:border-rose-200 rounded-xl text-xs font-semibold text-rose-600 transition-colors cursor-pointer"
                     >
                       Remover
                     </button>
-                  </>
+                  </div>
                 ) : (
                   <button
                     type="button"
-                    onClick={() => {
-                      setPinError('');
-                      setIsEditingPin(true);
-                    }}
-                    className="w-full py-2 px-3 bg-white hover:bg-teal-50 border border-slate-200 hover:border-teal-200 rounded-xl text-xs font-semibold text-teal-800 flex items-center justify-center gap-1.5 transition-colors shadow-2xs"
-                  >
-                    <Lock className="w-3.5 h-3.5 text-teal-600" />
-                    <span>Configurar Senha de 4 Dígitos</span>
-                  </button>
-                )}
-              </div>
-            ) : (
-              <div className="space-y-3 pt-2 border-t border-slate-200/60">
-                <div className="flex items-center justify-between text-xs font-semibold text-slate-700">
-                  <span>{pinStatus.hasPin ? 'Alterar Senha' : 'Nova Senha'}</span>
-                  <button
-                    type="button"
-                    onClick={() => setShowPinDigits(!showPinDigits)}
-                    className="text-slate-400 hover:text-slate-600 flex items-center gap-1 text-[11px]"
-                  >
-                    {showPinDigits ? (
-                      <>
-                        <EyeOff className="w-3.5 h-3.5" />
-                        <span>Ocultar</span>
-                      </>
-                    ) : (
-                      <>
-                        <Eye className="w-3.5 h-3.5" />
-                        <span>Mostrar</span>
-                      </>
-                    )}
-                  </button>
-                </div>
-
-                <div className="grid grid-cols-2 gap-2">
-                  <div>
-                    <label className="block text-[10px] font-semibold text-slate-500 mb-1">
-                      Senha (4 números)
-                    </label>
-                    <input
-                      type={showPinDigits ? 'text' : 'password'}
-                      inputMode="numeric"
-                      pattern="[0-9]*"
-                      maxLength={4}
-                      value={pinInput}
-                      onChange={(e) =>
-                        setPinInput(e.target.value.replace(/\D/g, '').slice(0, 4))
-                      }
-                      placeholder="••••"
-                      className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-center text-sm font-bold tracking-widest text-slate-800 focus:outline-hidden focus:border-teal-500 focus:ring-1 focus:ring-teal-500 tabular-nums"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-[10px] font-semibold text-slate-500 mb-1">
-                      Confirmar Senha
-                    </label>
-                    <input
-                      type={showPinDigits ? 'text' : 'password'}
-                      inputMode="numeric"
-                      pattern="[0-9]*"
-                      maxLength={4}
-                      value={pinConfirmInput}
-                      onChange={(e) =>
-                        setPinConfirmInput(
-                          e.target.value.replace(/\D/g, '').slice(0, 4)
-                        )
-                      }
-                      placeholder="••••"
-                      className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-center text-sm font-bold tracking-widest text-slate-800 focus:outline-hidden focus:border-teal-500 focus:ring-1 focus:ring-teal-500 tabular-nums"
-                    />
-                  </div>
-                </div>
-
-                {pinError && (
-                  <div className="flex items-center gap-1.5 text-[11px] text-rose-600 font-medium">
-                    <AlertCircle className="w-3.5 h-3.5 shrink-0" />
-                    <span>{pinError}</span>
-                  </div>
-                )}
-
-                <div className="flex gap-2">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setIsEditingPin(false);
-                      setPinInput('');
-                      setPinConfirmInput('');
-                      setPinError('');
-                    }}
-                    className="flex-1 py-1.5 bg-slate-200 hover:bg-slate-300 text-slate-700 text-xs font-semibold rounded-xl transition-colors"
-                  >
-                    Cancelar
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleSavePin}
-                    disabled={pinInput.length !== 4 || pinConfirmInput.length !== 4}
-                    className="flex-1 py-1.5 bg-teal-600 hover:bg-teal-700 disabled:opacity-50 text-white text-xs font-semibold rounded-xl transition-colors shadow-2xs"
-                  >
-                    Salvar Senha
-                  </button>
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* Section: Cadastrar/Ativar Biometria (Passkey / WebAuthn) */}
-          <div className="p-3.5 bg-slate-50 rounded-2xl border border-slate-200/80 space-y-3">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <div className="w-7 h-7 rounded-xl bg-violet-100 text-violet-700 flex items-center justify-center">
-                  <Fingerprint className="w-4 h-4" />
-                </div>
-                <div>
-                  <h4 className="text-xs font-bold text-slate-800">
-                    Cadastrar/Ativar Biometria
-                  </h4>
-                  <p className="text-[11px] text-slate-500">
-                    {bioStatus.hasKey
-                      ? bioStatus.isEnabled
-                        ? 'Desbloqueio por digital ativo'
-                        : 'Biometria salva, mas bloqueio pausado'
-                      : 'Proteja seu app com a digital do celular (Passkey)'}
-                  </p>
-                </div>
-              </div>
-
-              {bioStatus.hasKey && (
-                <button
-                  type="button"
-                  onClick={handleToggleBiometric}
-                  className={`px-2.5 py-1 rounded-xl text-xs font-semibold transition-colors ${
-                    bioStatus.isEnabled
-                      ? 'bg-violet-600 text-white shadow-2xs'
-                      : 'bg-slate-200 text-slate-700 hover:bg-slate-300'
-                  }`}
-                >
-                  {bioStatus.isEnabled ? 'Ativado' : 'Pausado'}
-                </button>
-              )}
-            </div>
-
-            {bioSuccess && (
-              <div className="flex items-center gap-1.5 p-2 bg-emerald-50 text-emerald-700 rounded-xl text-xs font-medium border border-emerald-200 animate-in fade-in">
-                <ShieldCheck className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-                <span>{bioSuccess}</span>
-              </div>
-            )}
-
-            {bioError && (
-              <div className="flex items-center gap-1.5 p-2 bg-rose-50 text-rose-700 rounded-xl text-xs font-medium border border-rose-200 animate-in fade-in">
-                <AlertCircle className="w-3.5 h-3.5 shrink-0" />
-                <span>{bioError}</span>
-              </div>
-            )}
-
-            <div className="pt-1 border-t border-slate-200/60">
-              {bioStatus.hasKey ? (
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={handleTestBiometric}
-                    className="flex-1 py-2 px-3 bg-white hover:bg-violet-50 border border-slate-200 hover:border-violet-200 rounded-xl text-xs font-semibold text-violet-800 flex items-center justify-center gap-1.5 transition-colors shadow-2xs"
+                    onClick={handleRegisterBiometric}
+                    disabled={isRegisteringBio}
+                    className="w-full py-2 px-3 bg-violet-50 hover:bg-violet-100 border border-violet-200 rounded-xl text-xs font-semibold text-violet-800 flex items-center justify-center gap-1.5 transition-colors shadow-2xs cursor-pointer"
                   >
                     <Fingerprint className="w-3.5 h-3.5 text-violet-600" />
-                    <span>Testar Biometria</span>
+                    <span>
+                      {isRegisteringBio ? 'Registrando chave biométrica...' : 'Cadastrar / Ativar Biometria'}
+                    </span>
                   </button>
-                  <button
-                    type="button"
-                    onClick={handleRemoveBiometric}
-                    className="py-2 px-3 bg-white hover:bg-rose-50 border border-slate-200 hover:border-rose-200 rounded-xl text-xs font-semibold text-rose-600 transition-colors"
-                  >
-                    Remover
-                  </button>
-                </div>
-              ) : (
-                <button
-                  type="button"
-                  onClick={handleRegisterBiometric}
-                  disabled={isRegisteringBio}
-                  className="w-full py-2 px-3 bg-white hover:bg-violet-50 border border-slate-200 hover:border-violet-200 rounded-xl text-xs font-semibold text-violet-800 flex items-center justify-center gap-1.5 transition-colors shadow-2xs"
-                >
-                  <Fingerprint className="w-3.5 h-3.5 text-violet-600" />
-                  <span>
-                    {isRegisteringBio
-                      ? 'Registrando chave biométrica...'
-                      : 'Cadastrar/Ativar Biometria'}
-                  </span>
-                </button>
-              )}
+                )}
+              </div>
             </div>
           </div>
 
-          {/* Section: Banco de Dados na Nuvem (Firebase Firestore) */}
-          <div className="p-3.5 bg-sky-50/70 rounded-2xl border border-sky-200/80 space-y-3">
+          {/* SEÇÃO 4: CONEXÃO E SINCRONIZAÇÃO NUVEM (CONTA GOOGLE / FIRESTORE) */}
+          <div className="bg-sky-50/70 rounded-2xl border border-sky-200/80 p-4 space-y-3">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <div className="w-7 h-7 rounded-xl bg-sky-600 text-white flex items-center justify-center shadow-2xs shrink-0">
-                  <Cloud className="w-4 h-4 text-white" />
+                  <Cloud className="w-3.5 h-3.5 text-white" />
                 </div>
                 <div>
                   <h4 className="text-xs font-bold text-sky-950 flex items-center gap-1.5">
-                    <span>Banco de Dados na Nuvem</span>
+                    <span>Sincronização Nuvem (Firestore)</span>
                     <span
                       className={`px-1.5 py-0.5 text-[9px] font-bold rounded-md ${
                         authUser
@@ -875,21 +903,21 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
                           : 'bg-slate-200 text-slate-700'
                       }`}
                     >
-                      {authUser ? 'Sincronizado Online' : 'Armazenamento Local'}
+                      {authUser ? 'Online' : 'Local'}
                     </span>
                   </h4>
-                  <p className="text-[11px] text-sky-700 leading-tight">
+                  <p className="text-[11px] text-sky-700">
                     {authUser
                       ? `Conectado como ${authUser.displayName || authUser.email}`
-                      : 'Sincronize com o Firestore para acessar de qualquer celular ou PC'}
+                      : 'Backup em nuvem vinculado ao Google UID'}
                   </p>
                 </div>
               </div>
             </div>
 
             {authUser ? (
-              <div className="space-y-2 pt-1 border-t border-sky-200/60">
-                <div className="flex items-center justify-between text-[11px] text-slate-600 bg-white/90 p-2 rounded-xl border border-sky-100">
+              <div className="space-y-2.5 pt-1 border-t border-sky-200/60">
+                <div className="flex items-center justify-between text-[11px] text-slate-600 bg-white/90 p-2.5 rounded-xl border border-sky-100">
                   <span className="flex items-center gap-1.5 font-medium">
                     <ShieldCheck className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
                     <span>Status na Nuvem:</span>
@@ -897,9 +925,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
                   <span className="font-semibold text-emerald-700 flex items-center gap-1">
                     <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
                     <span>
-                      {cloudSyncState === 'syncing'
-                        ? 'Sincronizando...'
-                        : 'Firestore Conectado'}
+                      {cloudSyncState === 'syncing' ? 'Sincronizando...' : 'Firestore Conectado'}
                     </span>
                   </span>
                 </div>
@@ -909,7 +935,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
                     type="button"
                     onClick={onSyncNow}
                     disabled={cloudSyncState === 'syncing'}
-                    className="flex-1 py-2 px-3 bg-white hover:bg-sky-100/70 active:bg-sky-100 border border-sky-200 text-sky-800 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-colors shadow-2xs"
+                    className="flex-1 py-2 px-3 bg-white hover:bg-sky-100/70 active:bg-sky-100 border border-sky-200 text-sky-800 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-colors shadow-2xs cursor-pointer"
                   >
                     <RefreshCw
                       className={`w-3.5 h-3.5 text-sky-600 ${
@@ -917,16 +943,14 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
                       }`}
                     />
                     <span>
-                      {cloudSyncState === 'syncing'
-                        ? 'Sincronizando...'
-                        : 'Sincronizar Agora'}
+                      {cloudSyncState === 'syncing' ? 'Sincronizando...' : 'Sincronizar Agora'}
                     </span>
                   </button>
 
                   <button
                     type="button"
                     onClick={onLogoutGoogle}
-                    className="py-2 px-3 bg-white hover:bg-rose-50 border border-slate-200 hover:border-rose-200 text-rose-600 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-colors shadow-2xs"
+                    className="py-2 px-3 bg-white hover:bg-rose-50 border border-slate-200 hover:border-rose-200 text-rose-600 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-colors shadow-2xs cursor-pointer"
                   >
                     <LogOut className="w-3.5 h-3.5" />
                     <span>Desconectar</span>
@@ -934,17 +958,15 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
                 </div>
               </div>
             ) : (
-              <div className="space-y-3 pt-2 border-t border-sky-200/60">
+              <div className="space-y-2.5 pt-1 border-t border-sky-200/60">
                 <p className="text-[11px] text-sky-900 leading-relaxed">
-                  Conecte sua conta do Google com apenas <strong>1 clique</strong> para salvar todas as suas despesas, receitas, saldos e metas diretamente na nuvem.
+                  Conecte sua conta do Google com <strong>1 clique</strong> para manter seus lançamentos, PIN e preferências salvos na nuvem mesmo ao trocar de aparelho.
                 </p>
 
-                {/* 1. Botão Oficial Google (1-Clique, try/catch/finally e nunca trava) */}
                 <button
                   type="button"
                   onClick={handleLoginGoogleClick}
-                  disabled={false}
-                  className="w-full py-2.5 px-4 bg-white hover:bg-slate-50 active:bg-slate-100 active:scale-98 text-slate-800 border border-slate-300 rounded-xl text-xs font-bold flex items-center justify-center gap-2.5 transition-all shadow-2xs hover:shadow-xs cursor-pointer group"
+                  className="w-full py-2.5 px-4 bg-white hover:bg-slate-50 active:bg-slate-100 text-slate-800 border border-slate-300 rounded-xl text-xs font-bold flex items-center justify-center gap-2.5 transition-all shadow-2xs hover:shadow-xs cursor-pointer group"
                 >
                   {isLoggingIn ? (
                     <RefreshCw className="w-4 h-4 text-sky-600 animate-spin" />
@@ -973,110 +995,267 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
                   </span>
                 </button>
 
-                {/* 2. Banner de Aviso Amigável em Caso de Falha de Rede ou Autenticação */}
                 {googleLoginError && (
-                  <div className="p-3 bg-amber-50/90 text-amber-900 rounded-xl text-xs font-medium border border-amber-200/80 flex items-start gap-2.5 animate-in fade-in">
-                    <AlertCircle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
-                    <div className="flex-1">
-                      <p className="font-semibold text-amber-950">{googleLoginError}</p>
-                      <p className="text-[11px] text-amber-800 mt-1">
-                        Seus lançamentos locais permanecem preservados. Você pode tentar novamente a qualquer momento clicando no botão acima.
+                  <div className="p-2.5 bg-amber-50 text-amber-900 rounded-xl text-xs font-medium border border-amber-200 flex items-start gap-2">
+                    <AlertCircle className="w-3.5 h-3.5 text-amber-600 shrink-0 mt-0.5" />
+                    <p className="text-[11px]">{googleLoginError}</p>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* SEÇÃO 5: LIXEIRA LOCAL (ARMAZENAMENTO INTERNO) */}
+          <div className="bg-amber-50/60 rounded-2xl border border-amber-200/80 p-4 space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <div className="w-7 h-7 rounded-xl bg-amber-600 text-white flex items-center justify-center shadow-2xs shrink-0">
+                  <Trash2 className="w-3.5 h-3.5 text-white" />
+                </div>
+                <div>
+                  <h4 className="text-xs font-bold text-amber-950 flex items-center gap-1.5">
+                    <span>Lixeira Local</span>
+                    <span className="px-1.5 py-0.5 text-[9px] font-bold rounded-md bg-amber-200/80 text-amber-900">
+                      {trashTransactions.length} {trashTransactions.length === 1 ? 'item' : 'itens'}
+                    </span>
+                  </h4>
+                  <p className="text-[11px] text-amber-800">
+                    Armazenamento interno do celular
+                  </p>
+                </div>
+              </div>
+
+              {trashTransactions.length > 0 && (
+                <div className="flex items-center gap-1">
+                  {onRestoreAllFromTrash && (
+                    <button
+                      type="button"
+                      onClick={onRestoreAllFromTrash}
+                      title="Restaurar todos os itens da lixeira"
+                      className="px-2 py-1 bg-white hover:bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-lg text-[10px] font-bold flex items-center gap-1 transition-colors cursor-pointer shadow-2xs"
+                    >
+                      <RotateCcw className="w-3 h-3 text-emerald-600" />
+                      <span>Restaurar Todos</span>
+                    </button>
+                  )}
+                  {onEmptyTrash && (
+                    <button
+                      type="button"
+                      onClick={() => setShowEmptyTrashConfirmModal(true)}
+                      title="Esvaziar lixeira permanentemente"
+                      className="px-2 py-1 bg-white hover:bg-rose-50 border border-rose-200 text-rose-700 rounded-lg text-[10px] font-bold flex items-center gap-1 transition-colors cursor-pointer shadow-2xs"
+                    >
+                      <Trash2 className="w-3 h-3 text-rose-600" />
+                      <span>Esvaziar</span>
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {trashSuccess && (
+              <div className="flex items-center gap-1.5 p-2 bg-emerald-50 text-emerald-700 rounded-xl text-xs font-medium border border-emerald-200 animate-in fade-in">
+                <Check className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                <span>{trashSuccess}</span>
+              </div>
+            )}
+
+            <p className="text-[11px] text-amber-900/90 leading-relaxed">
+              Lançamentos excluídos são preservados na memória local do aparelho, permitindo recuperação rápida sem perdas.
+            </p>
+
+            {trashTransactions.length === 0 ? (
+              <div className="p-3 bg-white/90 rounded-xl border border-amber-200/60 text-center space-y-1">
+                <p className="text-xs font-semibold text-slate-700">Lixeira vazia</p>
+                <p className="text-[10px] text-slate-400">
+                  Nenhum lançamento foi excluído recentemente no aparelho.
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-1.5 max-h-56 overflow-y-auto pr-0.5 divide-y divide-amber-100 bg-white/90 rounded-xl border border-amber-200/70 p-2">
+                {trashTransactions.map((tx) => {
+                  const cat = categoriesMap.get(tx.categoryId);
+                  const isIncome = tx.kind === 'income';
+                  const deletedDateStr = tx.deletedAt
+                    ? new Date(tx.deletedAt).toLocaleDateString('pt-BR', {
+                        day: '2-digit',
+                        month: '2-digit',
+                        hour: '2-digit',
+                        minute: '2-digit',
+                      })
+                    : '';
+
+                  return (
+                    <div
+                      key={tx.id}
+                      className="pt-2 first:pt-0 flex items-center justify-between gap-2 text-xs"
+                    >
+                      <div className="flex items-center gap-2 min-w-0">
+                        <div
+                          className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0"
+                          style={{
+                            backgroundColor: cat?.color ? `${cat.color}30` : '#f1f5f9',
+                          }}
+                        >
+                          <CategoryIcon name={cat?.iconName} className="w-3.5 h-3.5 text-slate-700" />
+                        </div>
+                        <div className="min-w-0">
+                          <p className="font-semibold text-slate-800 truncate leading-tight">
+                            {tx.name}
+                          </p>
+                          <p className="text-[10px] text-slate-400 truncate">
+                            {cat?.name || 'Geral'} {deletedDateStr ? `• Excluído em ${deletedDateStr}` : ''}
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2 shrink-0">
+                        <span
+                          className={`font-bold tabular-nums text-xs ${
+                            isIncome ? 'text-emerald-600' : 'text-slate-800'
+                          }`}
+                        >
+                          {isIncome ? '+' : '-'} {formatMoney(tx.amount)}
+                        </span>
+
+                        <div className="flex items-center gap-1">
+                          {onRestoreFromTrash && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                onRestoreFromTrash(tx.id);
+                                setTrashSuccess(`"${tx.name}" restaurado com sucesso!`);
+                                setTimeout(() => setTrashSuccess(''), 2500);
+                              }}
+                              title="Restaurar este lançamento"
+                              className="p-1 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-700 transition-colors cursor-pointer"
+                            >
+                              <RotateCcw className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                          {onDeletePermanentlyFromTrash && (
+                            <button
+                              type="button"
+                              onClick={() => onDeletePermanentlyFromTrash(tx.id)}
+                              title="Apagar definitivamente da memória"
+                              className="p-1 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-600 transition-colors cursor-pointer"
+                            >
+                              <X className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          {/* SEÇÃO 6: SUPORTE & OPÇÕES (CSV EXCLUSIVO, WHATSAPP, INFO & ZERAR HISTÓRICO) */}
+          <div className="bg-slate-50/80 rounded-2xl border border-slate-200/80 p-4 space-y-3">
+            <div className="flex items-center gap-2">
+              <div className="w-7 h-7 rounded-xl bg-slate-800 text-white flex items-center justify-center shadow-2xs shrink-0">
+                <Sliders className="w-3.5 h-3.5 text-white" />
+              </div>
+              <div>
+                <h4 className="text-xs font-bold text-slate-900">Suporte & Opções</h4>
+                <p className="text-[11px] text-slate-500">Relatórios, compartilhamento e manutenção</p>
+              </div>
+            </div>
+
+            <div className="bg-white rounded-xl border border-slate-200/70 divide-y divide-slate-100 overflow-hidden">
+              {/* Item: Exportar Relatório CSV (EXCLUSIVO NO PERFIL) */}
+              {onExportCSV && (
+                <div className="p-3 flex items-center justify-between gap-3 hover:bg-slate-50/50 transition-colors">
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <div className="w-8 h-8 rounded-xl bg-teal-50 text-teal-700 flex items-center justify-center shrink-0">
+                      <FileSpreadsheet className="w-4 h-4" />
+                    </div>
+                    <div className="min-w-0">
+                      <h5 className="text-xs font-bold text-slate-800">Exportar Relatório CSV</h5>
+                      <p className="text-[11px] text-slate-500 truncate">
+                        Download da planilha com lançamentos do mês
                       </p>
                     </div>
                   </div>
-                )}
-
-                <div className="flex items-center justify-center gap-1.5 text-[10px] text-sky-800/80 pt-0.5">
-                  <Cloud className="w-3 h-3 text-sky-600 shrink-0" />
-                  <span>Sincronização contínua com Firestore vinculada ao seu Google UID.</span>
+                  <button
+                    type="button"
+                    onClick={onExportCSV}
+                    className="px-3 py-1.5 bg-teal-600 hover:bg-teal-700 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-2xs transition-colors shrink-0 cursor-pointer"
+                  >
+                    <FileSpreadsheet className="w-3.5 h-3.5" />
+                    <span>Baixar CSV</span>
+                  </button>
                 </div>
-              </div>
-            )}
-          </div>
+              )}
 
-          {/* Section: Compartilhar Aplicativo no WhatsApp */}
-          <div className="p-3.5 bg-emerald-50/70 rounded-2xl border border-emerald-100 space-y-2">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <div className="w-7 h-7 rounded-xl bg-emerald-600 text-white flex items-center justify-center shadow-2xs">
-                  <WhatsAppIcon className="w-4 h-4 text-white" />
-                </div>
-                <div>
-                  <h4 className="text-xs font-bold text-emerald-950">
-                    Compartilhar no WhatsApp
-                  </h4>
-                  <p className="text-[11px] text-emerald-700">
-                    Envie o aplicativo para abrir direto no celular
-                  </p>
-                </div>
-              </div>
-            </div>
-
-            <button
-              type="button"
-              onClick={handleShareWhatsApp}
-              className="w-full py-2.5 px-3 bg-emerald-600 hover:bg-emerald-700 active:scale-98 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all shadow-xs"
-            >
-              <WhatsAppIcon className="w-4 h-4 text-white" />
-              <span>Compartilhar Aplicativo no WhatsApp</span>
-            </button>
-          </div>
-
-          {/* User Account Info Cards */}
-          <div className="p-3 bg-slate-50 rounded-2xl border border-slate-200/80 space-y-2 text-xs">
-            <div className="flex items-center justify-between text-slate-600">
-              <span className="flex items-center gap-1.5">
-                <Calendar className="w-3.5 h-3.5 text-slate-400" />
-                <span>Membro desde:</span>
-              </span>
-              <span className="font-semibold text-slate-800">
-                {profile.joinedDate}
-              </span>
-            </div>
-
-            <div className="flex items-center justify-between text-slate-600">
-              <span className="flex items-center gap-1.5">
-                <Receipt className="w-3.5 h-3.5 text-slate-400" />
-                <span>Lançamentos salvos:</span>
-              </span>
-              <span className="font-semibold text-slate-800 tabular-nums">
-                {totalTransactionsCount} transações
-              </span>
-            </div>
-
-            {onExportCSV && (
-              <div className="pt-2 border-t border-slate-200/60 flex items-center justify-between">
-                <div>
-                  <span className="font-semibold text-slate-700 block">Exportar Relatório</span>
-                  <span className="text-[11px] text-slate-400">Resumo e transações do mês</span>
+              {/* Item: Compartilhar no WhatsApp */}
+              <div className="p-3 flex items-center justify-between gap-3 hover:bg-slate-50/50 transition-colors">
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <div className="w-8 h-8 rounded-xl bg-emerald-50 text-emerald-700 flex items-center justify-center shrink-0">
+                    <WhatsAppIcon className="w-4 h-4 text-emerald-600" />
+                  </div>
+                  <div className="min-w-0">
+                    <h5 className="text-xs font-bold text-slate-800">Compartilhar Aplicativo</h5>
+                    <p className="text-[11px] text-slate-500 truncate">
+                      Envie o link do app para celular ou WhatsApp
+                    </p>
+                  </div>
                 </div>
                 <button
                   type="button"
-                  onClick={onExportCSV}
-                  className="px-2.5 py-1.5 bg-white hover:bg-teal-50 border border-slate-200 hover:border-teal-200 text-slate-700 hover:text-teal-800 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-colors shadow-2xs"
+                  onClick={handleShareWhatsApp}
+                  className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-2xs transition-colors shrink-0 cursor-pointer"
                 >
-                  <FileSpreadsheet className="w-3.5 h-3.5 text-teal-600" />
-                  <span>Baixar CSV</span>
+                  <WhatsAppIcon className="w-3.5 h-3.5 text-white" />
+                  <span>WhatsApp</span>
                 </button>
               </div>
-            )}
-          </div>
 
-          {/* Section: Zerar Histórico de Transações / Limpar Dados Salvos */}
-          <div className="p-3.5 bg-rose-50/70 rounded-2xl border border-rose-200/80 space-y-3">
-            <div className="flex items-start justify-between gap-2">
-              <div className="flex items-center gap-2">
-                <div className="w-7 h-7 rounded-xl bg-rose-600 text-white flex items-center justify-center shadow-2xs shrink-0">
-                  <Trash2 className="w-4 h-4 text-white" />
+              {/* Item: Informações da Conta */}
+              <div className="p-3 space-y-1.5 bg-slate-50/40 text-xs">
+                <div className="flex items-center justify-between text-slate-600">
+                  <span className="flex items-center gap-1.5">
+                    <Calendar className="w-3.5 h-3.5 text-slate-400" />
+                    <span>Membro desde:</span>
+                  </span>
+                  <span className="font-semibold text-slate-800">
+                    {profile.joinedDate}
+                  </span>
                 </div>
-                <div>
-                  <h4 className="text-xs font-bold text-rose-950">
-                    Zerar Histórico de Transações
-                  </h4>
-                  <p className="text-[11px] text-rose-700 leading-tight">
-                    Limpa todos os lançamentos ({totalTransactionsCount} {totalTransactionsCount === 1 ? 'transação' : 'transações'}), mantendo seu perfil e senhas
-                  </p>
+                <div className="flex items-center justify-between text-slate-600">
+                  <span className="flex items-center gap-1.5">
+                    <Receipt className="w-3.5 h-3.5 text-slate-400" />
+                    <span>Lançamentos salvos:</span>
+                  </span>
+                  <span className="font-semibold text-slate-800 tabular-nums">
+                    {totalTransactionsCount} transações
+                  </span>
                 </div>
+              </div>
+
+              {/* Item: Zerar Histórico de Transações */}
+              <div className="p-3 flex items-center justify-between gap-3 hover:bg-rose-50/30 transition-colors">
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <div className="w-8 h-8 rounded-xl bg-rose-100 text-rose-700 flex items-center justify-center shrink-0">
+                    <Trash2 className="w-4 h-4" />
+                  </div>
+                  <div className="min-w-0">
+                    <h5 className="text-xs font-bold text-rose-950">Zerar Histórico</h5>
+                    <p className="text-[11px] text-rose-700 truncate">
+                      Apaga lançamentos locais e da nuvem (0 registros)
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowClearConfirmModal(true)}
+                  className="px-3 py-1.5 bg-white hover:bg-rose-100/80 border border-rose-300 text-rose-700 rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-2xs transition-colors shrink-0 cursor-pointer"
+                >
+                  <Trash2 className="w-3.5 h-3.5 text-rose-600" />
+                  <span>Zerar</span>
+                </button>
               </div>
             </div>
 
@@ -1086,43 +1265,63 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
                 <span>{clearSuccess}</span>
               </div>
             )}
-
-            <button
-              type="button"
-              onClick={() => setShowClearConfirmModal(true)}
-              className="w-full py-2.5 px-3 bg-white hover:bg-rose-100/70 active:bg-rose-100 border border-rose-200 text-rose-700 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all shadow-2xs hover:border-rose-300 active:scale-98"
-            >
-              <Trash2 className="w-3.5 h-3.5 text-rose-600" />
-              <span>Zerar Histórico de Transações</span>
-            </button>
           </div>
 
-          {/* Action buttons */}
-          <div className="flex gap-2 pt-2">
+          {/* Botão Inferior Fechar */}
+          <div className="pt-2">
             <button
               type="button"
               onClick={onClose}
-              className="flex-1 py-3 text-xs font-semibold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-xl transition-colors min-h-[44px]"
+              className="w-full py-3 text-xs font-bold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-xl transition-colors cursor-pointer"
             >
-              Cancelar
-            </button>
-            <button
-              type="submit"
-              disabled={!name.trim()}
-              className={`flex-1 py-3 text-xs font-semibold text-white rounded-xl transition-all flex items-center justify-center gap-1.5 min-h-[44px] shadow-xs ${
-                savedSuccess
-                  ? 'bg-emerald-600'
-                  : 'bg-slate-900 hover:bg-slate-800 disabled:opacity-50'
-              }`}
-            >
-              <Check className="w-4 h-4" />
-              <span>{savedSuccess ? 'Salvo com Sucesso!' : 'Salvar Perfil'}</span>
+              Fechar Painel de Configurações
             </button>
           </div>
-        </form>
+        </div>
       </div>
 
-      {/* Pop-up Modal de Confirmação de Segurança */}
+      {/* Modal Confirmação: Esvaziar Lixeira */}
+      {showEmptyTrashConfirmModal && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-950/60 backdrop-blur-xs p-4 animate-in fade-in duration-150">
+          <div className="w-full max-w-sm bg-white rounded-3xl p-5 shadow-2xl border border-slate-100 space-y-4 animate-in zoom-in-95 duration-150">
+            <div className="w-12 h-12 rounded-2xl bg-amber-100 text-amber-700 flex items-center justify-center mx-auto shadow-2xs">
+              <Trash2 className="w-6 h-6 text-amber-600" />
+            </div>
+
+            <div className="text-center space-y-2">
+              <h3 className="text-base font-bold text-slate-900">
+                Esvaziar Lixeira Local?
+              </h3>
+              <p className="text-xs text-slate-600 leading-relaxed font-medium">
+                Tem certeza que deseja apagar permanentemente todos os <strong>{trashTransactions.length}</strong> itens da lixeira do celular?
+              </p>
+              <p className="text-[11px] text-slate-400">
+                Esta ação não poderá ser desfeita.
+              </p>
+            </div>
+
+            <div className="flex gap-2 pt-1">
+              <button
+                type="button"
+                onClick={() => setShowEmptyTrashConfirmModal(false)}
+                className="flex-1 py-2.5 px-3 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-semibold transition-colors cursor-pointer"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmEmptyTrash}
+                className="flex-1 py-2.5 px-3 bg-rose-600 hover:bg-rose-700 active:scale-98 text-white rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 shadow-xs cursor-pointer"
+              >
+                <Trash2 className="w-3.5 h-3.5 text-white" />
+                <span>Sim, Esvaziar</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Confirmação: Zerar Histórico de Transações */}
       {showClearConfirmModal && (
         <div className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-950/60 backdrop-blur-xs p-4 animate-in fade-in duration-150">
           <div className="w-full max-w-sm bg-white rounded-3xl p-5 shadow-2xl border border-slate-100 space-y-4 animate-in zoom-in-95 duration-150">
@@ -1135,10 +1334,10 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
                 Zerar Histórico de Transações?
               </h3>
               <p className="text-xs text-slate-600 leading-relaxed font-medium">
-                Tem certeza que deseja apagar todas as transações? Esta ação não pode ser desfeita.
+                Tem certeza que deseja apagar todas as transações? Seu aplicativo será redefinido para 0 registros.
               </p>
               <p className="text-[11px] text-slate-400">
-                Suas configurações básicas de perfil, categorias e senha/biometria serão mantidas normalmente.
+                Suas configurações de perfil, foto, categorias e senhas serão preservadas.
               </p>
             </div>
 
@@ -1146,7 +1345,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
               <button
                 type="button"
                 onClick={() => setShowClearConfirmModal(false)}
-                className="flex-1 py-2.5 px-3 bg-slate-100 hover:bg-slate-200 active:bg-slate-300 text-slate-700 rounded-xl text-xs font-semibold transition-colors min-h-[42px]"
+                className="flex-1 py-2.5 px-3 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-semibold transition-colors cursor-pointer"
               >
                 Cancelar
               </button>
@@ -1154,7 +1353,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
                 type="button"
                 onClick={handleConfirmClearTransactions}
                 disabled={isClearing}
-                className="flex-1 py-2.5 px-3 bg-rose-600 hover:bg-rose-700 active:scale-98 disabled:opacity-50 text-white rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 shadow-xs min-h-[42px]"
+                className="flex-1 py-2.5 px-3 bg-rose-600 hover:bg-rose-700 active:scale-98 disabled:opacity-50 text-white rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 shadow-xs cursor-pointer"
               >
                 <Trash2 className="w-3.5 h-3.5 text-white" />
                 <span>{isClearing ? 'Apagando...' : 'Sim, Apagar Tudo'}</span>

@@ -26,6 +26,9 @@ import {
 } from 'firebase/auth';
 import {
   getFirestore,
+  initializeFirestore,
+  persistentLocalCache,
+  persistentMultipleTabManager,
   doc,
   collection,
   setDoc,
@@ -67,17 +70,28 @@ try {
   } else {
     appInstance = !getApps().length ? initializeApp(firebaseConfig) : getApp();
 
+    const dbId = (appletConfig.firestoreDatabaseId && appletConfig.firestoreDatabaseId !== '(default)')
+      ? appletConfig.firestoreDatabaseId
+      : undefined;
+
+    // Ativa cache offline local (IndexedDB) no Firestore para carregamento instantâneo offline-first
     try {
-      if (appletConfig.firestoreDatabaseId && appletConfig.firestoreDatabaseId !== '(default)') {
-        dbInstance = getFirestore(appInstance, appletConfig.firestoreDatabaseId);
+      const cacheConfig = {
+        localCache: persistentLocalCache({
+          tabManager: persistentMultipleTabManager(),
+        }),
+      };
+      if (dbId) {
+        dbInstance = initializeFirestore(appInstance, cacheConfig, dbId);
       } else {
-        dbInstance = getFirestore(appInstance);
+        dbInstance = initializeFirestore(appInstance, cacheConfig);
       }
-    } catch (errDb) {
+      console.log('[Firestore] Persistência offline local ativada com sucesso.');
+    } catch (errCache) {
       try {
-        dbInstance = getFirestore(appInstance);
+        dbInstance = dbId ? getFirestore(appInstance, dbId) : getFirestore(appInstance);
       } catch (e2) {
-        console.warn('[Firestore] Inicialização em modo local:', errDb, e2);
+        console.warn('[Firestore] Inicialização em modo local:', errCache, e2);
         dbInstance = null;
       }
     }

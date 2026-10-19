@@ -30,6 +30,10 @@ export interface Transaction {
   createdAt: number;
 }
 
+export interface TrashTransaction extends Transaction {
+  deletedAt: number; // Timestamp quando o item foi enviado para a lixeira
+}
+
 export interface RecurringExpenseRule {
   id: string; // Group ID
   name: string;

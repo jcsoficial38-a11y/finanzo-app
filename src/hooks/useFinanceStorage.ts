@@ -2,12 +2,15 @@ import { useState, useEffect, useMemo, useCallback } from 'react';
 import {
   Category,
   Transaction,
+  TrashTransaction,
   MonthSummary,
   ExpenseType,
   CategoryType,
   UserProfile,
   RecurringExpenseRule,
 } from '../types/finance';
+import { getStoredPinData, restorePinFromCloud } from '../utils/pinSecurity';
+import { getStoredBiometricData, restoreBiometricFromCloud } from '../utils/biometricSecurity';
 import {
   INITIAL_INCOME_CATEGORIES,
   INITIAL_EXPENSE_CATEGORIES,
@@ -106,6 +109,15 @@ export function useFinanceStorage() {
         ...t,
         categoryId: normalizeCategoryId(t.categoryId),
       }));
+    }
+    return [];
+  });
+
+  // Local Trash (Lixeira Local no Armazenamento Interno)
+  const [trashTransactions, setTrashTransactions] = useState<TrashTransaction[]>(() => {
+    const stored = safeGetLocalStorage<TrashTransaction[] | null>(PERSISTENT_STORAGE_KEYS.TRASH_TRANSACTIONS, null);
+    if (stored && Array.isArray(stored)) {
+      return stored;
     }
     return [];
   });
@@ -256,6 +268,11 @@ export function useFinanceStorage() {
         if (dbRules && Array.isArray(dbRules) && dbRules.length > 0) {
           setRecurringRules(dbRules);
         }
+
+        const dbTrash = await getFromIndexedDB<TrashTransaction[]>(PERSISTENT_STORAGE_KEYS.TRASH_TRANSACTIONS);
+        if (dbTrash && Array.isArray(dbTrash) && dbTrash.length > 0) {
+          setTrashTransactions((prev) => (prev.length === 0 ? dbTrash : prev));
+        }
       } catch (err) {
         console.warn('[FinanzoStorage] Sincronização IndexedDB:', err);
       }
@@ -296,6 +313,16 @@ export function useFinanceStorage() {
   useEffect(() => {
     safeSetLocalStorage(PERSISTENT_STORAGE_KEYS.RECURRING_RULES, recurringRules);
   }, [recurringRules]);
+
+  useEffect(() => {
+    safeSetLocalStorage(PERSISTENT_STORAGE_KEYS.TRASH_TRANSACTIONS, trashTransactions);
+    saveToIndexedDB(PERSISTENT_STORAGE_KEYS.TRASH_TRANSACTIONS, trashTransactions).catch(() => {});
+  }, [trashTransactions]);
+
+  useEffect(() => {
+    safeSetLocalStorage(PERSISTENT_STORAGE_KEYS.TRASH_TRANSACTIONS, trashTransactions);
+    saveToIndexedDB(PERSISTENT_STORAGE_KEYS.TRASH_TRANSACTIONS, trashTransactions).catch(() => {});
+  }, [trashTransactions]);
 
   // 3. Continuous Master Snapshot Backup
   useEffect(() => {
@@ -338,8 +365,17 @@ export function useFinanceStorage() {
           (cloudData.transactions.length > 0 ||
             cloudData.incomeCategories.length > 0 ||
             cloudData.expenseCategories.length > 0 ||
-            cloudData.userProfile?.name)
+            cloudData.userProfile?.name ||
+            cloudData.security)
         ) {
+          // 1. Restaura Preferências de Segurança (PIN e Biometria) salvas no Firestore
+          if (cloudData.security) {
+            if (cloudData.security.pin) {
+              restorePinFromCloud(cloudData.security.pin, cloudData.security.pinEnabled !== false);
+            }
+            restoreBiometricFromCloud(cloudData.security);
+          }
+
           markHasRealUserData();
           setTransactions(cloudData.transactions);
           if (cloudData.incomeCategories.length > 0) {
@@ -388,6 +424,8 @@ export function useFinanceStorage() {
           }
         } else {
           // Primeira conexão desta conta Google: salva os dados locais atuais na nuvem
+          const pinData = getStoredPinData();
+          const bioData = getStoredBiometricData();
           await syncUserDataToCloud(authUser.uid, {
             transactions,
             incomeCategories,
@@ -401,6 +439,15 @@ export function useFinanceStorage() {
               avatarUrl: authUser.photoURL || userProfile.avatarUrl,
             },
             recurringRules,
+            security: {
+              pin: pinData.pin,
+              pinEnabled: pinData.isEnabled,
+              biometricEnabled: bioData.isEnabled,
+              biometricRegistered: bioData.isRegistered,
+              biometricType: bioData.type,
+              biometricDate: bioData.registeredDate,
+              biometricCredentialId: bioData.keyId,
+            },
           });
         }
         setCloudSyncState('synced');
@@ -425,6 +472,8 @@ export function useFinanceStorage() {
     const timer = setTimeout(async () => {
       try {
         setCloudSyncState('syncing');
+        const pinData = getStoredPinData();
+        const bioData = getStoredBiometricData();
         await syncUserDataToCloud(authUser.uid, {
           transactions,
           incomeCategories,
@@ -434,6 +483,15 @@ export function useFinanceStorage() {
           categoryBudgets,
           userProfile,
           recurringRules,
+          security: {
+            pin: pinData.pin,
+            pinEnabled: pinData.isEnabled,
+            biometricEnabled: bioData.isEnabled,
+            biometricRegistered: bioData.isRegistered,
+            biometricType: bioData.type,
+            biometricDate: bioData.registeredDate,
+            biometricCredentialId: bioData.keyId,
+          },
         });
         setCloudSyncState('synced');
         setLastSyncTime(new Date());
@@ -892,7 +950,7 @@ export function useFinanceStorage() {
     [transactions]
   );
 
-  // Transaction deletion
+  // Transaction deletion (moves to Local Trash + removes from cloud)
   const deleteTransaction = useCallback(
     (
       transactionId: string,
@@ -908,15 +966,14 @@ export function useFinanceStorage() {
         const target = prev.find((t) => t.id === transactionId);
         if (!target) return prev;
 
+        let toTrash: Transaction[] = [target];
+
         // 1. Handle Installments deletion
         if (deleteAllInstallments && target.installmentGroupId) {
-          return prev.filter((t) => t.installmentGroupId !== target.installmentGroupId);
-        }
-
-        // 2. Handle Recurring Fixed Expense deletion
-        if (target.recurringGroupId) {
+          toTrash = prev.filter((t) => t.installmentGroupId === target.installmentGroupId);
+        } else if (target.recurringGroupId) {
+          // 2. Handle Recurring Fixed Expense deletion
           if (deleteRecurringMode === 'future') {
-            // Stop recurrence from this month onwards
             setRecurringRules((rules) =>
               rules.map((r) => {
                 if (r.id === target.recurringGroupId) {
@@ -926,16 +983,12 @@ export function useFinanceStorage() {
                 return r;
               })
             );
-            // Delete target and all future instances of this recurring group
-            return prev.filter(
+            toTrash = prev.filter(
               (t) =>
-                !(
-                  t.recurringGroupId === target.recurringGroupId &&
-                  t.monthKey >= target.monthKey
-                )
+                t.recurringGroupId === target.recurringGroupId &&
+                t.monthKey >= target.monthKey
             );
           } else {
-            // 'single': Only exclude this specific month, subsequent months continue
             setRecurringRules((rules) =>
               rules.map((r) => {
                 if (r.id === target.recurringGroupId) {
@@ -947,20 +1000,78 @@ export function useFinanceStorage() {
                 return r;
               })
             );
-            // Delete only this month's transaction
-            return prev.filter((t) => t.id !== transactionId);
+            toTrash = [target];
           }
         }
 
-        // 3. Regular transaction deletion
+        // Armazena na Lixeira Local com timestamp da exclusão
+        const now = Date.now();
+        const trashEntries: TrashTransaction[] = toTrash.map((t) => ({
+          ...t,
+          deletedAt: now,
+        }));
+
+        setTrashTransactions((prevTrash) => {
+          const trashIds = new Set(prevTrash.map((item) => item.id));
+          const newItems = trashEntries.filter((item) => !trashIds.has(item.id));
+          return [...newItems, ...prevTrash];
+        });
+
+        // Delete from cloud
         if (authUser) {
-          deleteTransactionFromCloud(authUser.uid, transactionId).catch(() => {});
+          toTrash.forEach((t) => {
+            deleteTransactionFromCloud(authUser.uid, t.id).catch(() => {});
+          });
         }
-        return prev.filter((t) => t.id !== transactionId);
+
+        const idsToDelete = new Set(toTrash.map((t) => t.id));
+        return prev.filter((t) => !idsToDelete.has(t.id));
       });
     },
     [authUser]
   );
+
+  // Restaura item da lixeira local de volta para os lançamentos
+  const restoreTransactionFromTrash = useCallback((id: string) => {
+    setTrashTransactions((prevTrash) => {
+      const target = prevTrash.find((t) => t.id === id);
+      if (!target) return prevTrash;
+
+      const { deletedAt, ...restoredTx } = target;
+      setTransactions((prev) => {
+        if (prev.some((t) => t.id === restoredTx.id)) return prev;
+        return [restoredTx, ...prev];
+      });
+
+      return prevTrash.filter((t) => t.id !== id);
+    });
+  }, []);
+
+  // Restaura todos os itens da lixeira de volta para os lançamentos
+  const restoreAllFromTrash = useCallback(() => {
+    setTrashTransactions((prevTrash) => {
+      if (prevTrash.length === 0) return prevTrash;
+      const restored = prevTrash.map(({ deletedAt, ...t }) => t);
+      setTransactions((prev) => {
+        const existing = new Set(prev.map((t) => t.id));
+        const toAdd = restored.filter((t) => !existing.has(t.id));
+        return [...toAdd, ...prev];
+      });
+      return [];
+    });
+  }, []);
+
+  // Esvazia permanentemente a lixeira local
+  const emptyTrash = useCallback(() => {
+    setTrashTransactions([]);
+    safeSetLocalStorage(PERSISTENT_STORAGE_KEYS.TRASH_TRANSACTIONS, []);
+    saveToIndexedDB(PERSISTENT_STORAGE_KEYS.TRASH_TRANSACTIONS, []).catch(() => {});
+  }, []);
+
+  // Exclui permanentemente um único item da lixeira
+  const deletePermanentlyFromTrash = useCallback((id: string) => {
+    setTrashTransactions((prev) => prev.filter((t) => t.id !== id));
+  }, []);
 
   // Clear all transactions history (Zerar Histórico de Transações / Limpar Dados Salvos)
   // Zera todo o histórico de lançamentos locais para 0 transações, mantendo perfil, categorias e senhas
@@ -1013,6 +1124,8 @@ export function useFinanceStorage() {
     }
     setCloudSyncState('syncing');
     try {
+      const pinData = getStoredPinData();
+      const bioData = getStoredBiometricData();
       await syncUserDataToCloud(authUser.uid, {
         transactions,
         incomeCategories,
@@ -1022,6 +1135,15 @@ export function useFinanceStorage() {
         categoryBudgets,
         userProfile,
         recurringRules,
+        security: {
+          pin: pinData.pin,
+          pinEnabled: pinData.isEnabled,
+          biometricEnabled: bioData.isEnabled,
+          biometricRegistered: bioData.isRegistered,
+          biometricType: bioData.type,
+          biometricDate: bioData.registeredDate,
+          biometricCredentialId: bioData.keyId,
+        },
       });
       setCloudSyncState('synced');
       setLastSyncTime(new Date());
@@ -1079,6 +1201,11 @@ export function useFinanceStorage() {
     categoryBudgets,
     userProfile,
     recurringRules,
+    trashTransactions,
+    restoreTransactionFromTrash,
+    restoreAllFromTrash,
+    emptyTrash,
+    deletePermanentlyFromTrash,
     updateUserProfile,
     setMonthBudget,
     setCategoryBudget,

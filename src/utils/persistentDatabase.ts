@@ -24,6 +24,7 @@ export const PERSISTENT_STORAGE_KEYS = {
   HAS_USER_DATA: 'finanzo_has_real_user_data_v1',
   MASTER_BACKUP: 'finanzo_master_snapshot_v2',
   DELETED_ITEM_IDS: 'finanzo_deleted_item_ids_v1',
+  TRASH_TRANSACTIONS: 'finanzo_trash_transactions_v1',
 };
 
 export interface MasterBackupPayload {
