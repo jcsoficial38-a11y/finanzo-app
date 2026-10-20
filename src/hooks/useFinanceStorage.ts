@@ -462,14 +462,40 @@ export function useFinanceStorage() {
           if (cloudData.userProfile?.name) {
             const cloudProfile = cloudData.userProfile;
             const isCloudGeneric =
+              !cloudProfile.name ||
               cloudProfile.name.trim().toLowerCase() === 'usuário' ||
-              cloudProfile.name.trim().toLowerCase() === 'usuario';
+              cloudProfile.name.trim().toLowerCase() === 'usuario' ||
+              cloudProfile.name.trim() === 'JC';
 
             setUserProfile((prev) => {
+              const localStored = getStoredUserProfile();
+              const hasCustomLocal =
+                localStored &&
+                localStored.name &&
+                localStored.name.trim().toLowerCase() !== 'usuário' &&
+                localStored.name.trim().toLowerCase() !== 'usuario' &&
+                localStored.name.trim() !== 'JC' &&
+                localStored.name.trim().length > 0;
+
+              if (hasCustomLocal) {
+                // Preserva o perfil local customizado com prioridade total
+                const preserved = {
+                  ...cloudProfile,
+                  name: localStored.name,
+                  login: localStored.login || cloudProfile.login,
+                  avatarUrl: localStored.avatarUrl || cloudProfile.avatarUrl || '',
+                  bio: localStored.bio || cloudProfile.bio || '',
+                  avatarColor: localStored.avatarColor || cloudProfile.avatarColor || '#7dd3fc',
+                };
+                saveStoredUserProfile(preserved);
+                return preserved;
+              }
+
               const isPrevGeneric =
                 !prev.name ||
                 prev.name.trim().toLowerCase() === 'usuário' ||
-                prev.name.trim().toLowerCase() === 'usuario';
+                prev.name.trim().toLowerCase() === 'usuario' ||
+                prev.name.trim() === 'JC';
 
               if (!isPrevGeneric && isCloudGeneric) {
                 const merged = {
