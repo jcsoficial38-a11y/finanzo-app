@@ -35,6 +35,7 @@ import {
   getFromIndexedDB,
   saveToIndexedDB,
   recoverAllLocalTransactions,
+  deduplicateTransactions,
 } from '../utils/persistentDatabase';
 import {
   subscribeToAuth,
@@ -124,16 +125,7 @@ export function useFinanceStorage() {
         });
       }
     }
-    const invalidNames = new Set(['freelance', 'investimentos', 'salário', 'salario', 'educação', 'educacao', 'casa', 'padaria', 'guloseimas', 'lançamento recuperado', '']);
-
-    const validTxs = Array.from(mergedMap.values()).filter((t) => {
-      const amt = Number(t.amount);
-      if (isNaN(amt) || amt <= 0) return false;
-      const nameTrim = (t.name || '').trim().toLowerCase();
-      if (invalidNames.has(nameTrim) && amt <= 0) return false;
-      return true;
-    });
-
+    const validTxs = deduplicateTransactions(Array.from(mergedMap.values()));
     return validTxs.sort((a, b) => b.createdAt - a.createdAt);
   });
 
@@ -450,14 +442,7 @@ export function useFinanceStorage() {
           }
 
           markHasRealUserData();
-          const invalidNames = new Set(['freelance', 'investimentos', 'salário', 'salario', 'educação', 'educacao', 'casa', 'padaria', 'guloseimas', 'lançamento recuperado', '']);
-          const cloudTxs = (cloudData.transactions || []).filter((t) => {
-            const amt = Number(t.amount);
-            if (isNaN(amt) || amt <= 0) return false;
-            const nameTrim = (t.name || '').trim().toLowerCase();
-            if (invalidNames.has(nameTrim) && amt <= 0) return false;
-            return true;
-          });
+          const cloudTxs = deduplicateTransactions(cloudData.transactions || []);
           setTransactions((prevLocal) => {
             const localPending = prevLocal.filter(t => t.pendingSync);
             const localMap = new Map(prevLocal.map(t => [t.id, t]));
@@ -992,6 +977,24 @@ export function useFinanceStorage() {
       } = params;
 
       const baseMonthKey = date.slice(0, 7);
+
+      // Anti-duplicate check guardrail
+      const nameTrim = name.trim().toLowerCase();
+      const amt = Math.abs(amount);
+      const isDuplicate = transactions.some((t) => {
+        return (
+          t.kind === kind &&
+          t.categoryId === categoryId &&
+          t.amount === amt &&
+          t.date === date &&
+          (t.name || '').trim().toLowerCase() === nameTrim
+        );
+      });
+
+      if (isDuplicate) {
+        console.warn('[AddTransaction] Tentativa de criar lançamento duplicado bloqueada.');
+        return [];
+      }
 
       // Handle normal transaction (Income, or Non-installment expense)
       if (kind === 'income' || expenseType !== 'installment' || installmentsCount <= 1) {

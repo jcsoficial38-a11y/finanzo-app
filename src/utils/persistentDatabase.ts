@@ -310,3 +310,33 @@ export function recoverAllLocalTransactions(): Transaction[] {
   return Array.from(recoveredMap.values());
 }
 
+export function deduplicateTransactions(transactions: Transaction[]): Transaction[] {
+  if (!Array.isArray(transactions) || transactions.length <= 1) return transactions || [];
+
+  const uniqueMap = new Map<string, Transaction>();
+  const invalidNames = new Set(['freelance', 'investimentos', 'salário', 'salario', 'educação', 'educacao', 'casa', 'padaria', 'guloseimas', 'lançamento recuperado', '']);
+
+  for (const t of transactions) {
+    if (!t || !t.id) continue;
+    const amt = Number(t.amount);
+    if (isNaN(amt) || amt <= 0) continue;
+    const nameTrim = (t.name || '').trim().toLowerCase();
+    if (invalidNames.has(nameTrim) && amt <= 0) continue;
+
+    const signature = `${t.kind || 'expense'}_${t.categoryId || 'exp-outros'}_${nameTrim}_${amt}_${(t.date || '').trim()}`;
+    const dedupKey = t.recurringGroupId ? `${t.recurringGroupId}_${t.monthKey}` : signature;
+
+    if (!uniqueMap.has(dedupKey)) {
+      uniqueMap.set(dedupKey, t);
+    } else {
+      const existing = uniqueMap.get(dedupKey)!;
+      if (t.createdAt && existing.createdAt && t.createdAt < existing.createdAt) {
+        uniqueMap.set(dedupKey, t);
+      }
+    }
+  }
+
+  return Array.from(uniqueMap.values());
+}
+
+
