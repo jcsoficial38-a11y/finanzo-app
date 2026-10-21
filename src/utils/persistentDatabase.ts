@@ -134,6 +134,51 @@ export async function getFromIndexedDB<T>(key: string): Promise<T | null> {
   });
 }
 
+// Clear all data from IndexedDB
+export async function clearAllIndexedDB(): Promise<boolean> {
+  const db = await getIndexedDB();
+  if (!db) return false;
+
+  return new Promise((resolve) => {
+    try {
+      const transaction = db.transaction([STORE_NAME], 'readwrite');
+      const store = transaction.objectStore(STORE_NAME);
+      const req = store.clear();
+      req.onsuccess = () => resolve(true);
+      req.onerror = () => resolve(false);
+    } catch {
+      resolve(false);
+    }
+  });
+}
+
+// Clear all Finanzo-related items from LocalStorage
+export function clearAllFinanzoLocalStorage(): void {
+  if (typeof window === 'undefined') return;
+  try {
+    const keysToRemove: string[] = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (
+        key &&
+        (key.startsWith('finanzo_') ||
+          key.includes('transaction') ||
+          key.includes('budget') ||
+          key.includes('income') ||
+          key.includes('rec-grp') ||
+          key.includes('inst-grp'))
+      ) {
+        keysToRemove.push(key);
+      }
+    }
+    for (const k of keysToRemove) {
+      localStorage.removeItem(k);
+    }
+  } catch (err) {
+    console.warn('[FinanzoStorage] Erro ao limpar LocalStorage:', err);
+  }
+}
+
 // Check if user has real saved data
 export function hasRealUserData(): boolean {
   if (typeof window === 'undefined') return false;

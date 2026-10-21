@@ -36,6 +36,8 @@ import {
   saveToIndexedDB,
   recoverAllLocalTransactions,
   deduplicateTransactions,
+  clearAllIndexedDB,
+  clearAllFinanzoLocalStorage,
 } from '../utils/persistentDatabase';
 import {
   subscribeToAuth,
@@ -45,6 +47,7 @@ import {
   fetchUserDataFromCloud,
   deleteTransactionFromCloud,
   clearAllTransactionsFromCloud,
+  resetAllUserDataFromCloud,
   checkRedirectResult,
   saveBudgetAndIncomeToCloud,
 } from '../services/firebase';
@@ -1366,6 +1369,62 @@ export function useFinanceStorage() {
     }
   }, [authUser, transactions, incomeCategories, expenseCategories, budgets, defaultBudget, categoryBudgets, userProfile, recurringRules]);
 
+  // Reset Total / Limpeza Geral de Dados
+  // Apaga absolutamente todos os lançamentos, despesas fixas, variáveis, orçamentos e dados salvos,
+  // limpando LocalStorage, IndexedDB e Firebase/Firestore, retornando ao estado inicial de fábrica (R$ 0,00 e 0 registros).
+  const resetAllData = useCallback(async () => {
+    // 1. Zera estado em memória para o estado de fábrica
+    setTransactions([]);
+    setRecurringRules([]);
+    setTrashTransactions([]);
+    setBudgets({});
+    setDefaultBudget(0);
+    setMonthlyIncomes({});
+    setDefaultIncome(0);
+    setCategoryBudgets({});
+    setIncomeCategories(INITIAL_INCOME_CATEGORIES);
+    setExpenseCategories(INITIAL_EXPENSE_CATEGORIES);
+
+    // 2. Limpa LocalStorage de chaves antigas e define estado limpo
+    clearAllFinanzoLocalStorage();
+    markHasRealUserData();
+
+    // 3. Limpa completamente o banco IndexedDB
+    try {
+      await clearAllIndexedDB();
+    } catch (e) {
+      console.warn('[FinanzoStorage] Erro ao limpar IndexedDB:', e);
+    }
+
+    // 4. Salva Snapshot Mestre limpo (zerado com R$ 0,00 e 0 transações)
+    saveMasterSnapshot({
+      transactions: [],
+      recurringRules: [],
+      incomeCategories: INITIAL_INCOME_CATEGORIES,
+      expenseCategories: INITIAL_EXPENSE_CATEGORIES,
+      budgets: {},
+      defaultBudget: 0,
+      categoryBudgets: {},
+      monthlyIncomes: {},
+      defaultIncome: 0,
+      userProfile,
+      savedAt: Date.now(),
+    });
+
+    // 5. Zera no Firebase Firestore se o usuário estiver autenticado
+    if (authUser?.uid) {
+      setCloudSyncState('syncing');
+      try {
+        await resetAllUserDataFromCloud(authUser.uid);
+        setCloudSyncState('synced');
+        setLastSyncTime(new Date());
+      } catch (err) {
+        console.warn('[FinanzoStorage] Falha ao resetar na nuvem:', err);
+        setCloudSyncState('error');
+      }
+    }
+  }, [authUser, userProfile]);
+
   // Protected reset handler (Anti-reset safeguard: protects user data from any automated wipe)
   const resetToInitialData = useCallback(() => {
     console.warn('[FinanzoStorage] Prevenção de Reset ativa: dados do usuário preservados.');
@@ -1430,6 +1489,7 @@ export function useFinanceStorage() {
     updateTransaction,
     deleteTransaction,
     clearAllTransactions,
+    resetAllData,
     resetToInitialData,
     restoreFromBackup,
     authUser,

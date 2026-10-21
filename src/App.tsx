@@ -60,6 +60,7 @@ export default function App() {
     updateTransaction,
     deleteTransaction,
     clearAllTransactions,
+    resetAllData,
     trashTransactions,
     restoreTransactionFromTrash,
     restoreAllFromTrash,
@@ -374,6 +375,7 @@ export default function App() {
         onUpdateProfile={updateUserProfile}
         onExportCSV={handleExportCSV}
         onClearTransactions={clearAllTransactions}
+        onResetAllData={resetAllData}
         trashTransactions={trashTransactions}
         categories={allCategories}
         onRestoreFromTrash={restoreTransactionFromTrash}

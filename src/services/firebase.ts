@@ -737,3 +737,78 @@ export async function clearAllTransactionsFromCloud(userId: string): Promise<voi
     }
   }
 }
+
+/**
+ * Realiza o Reset Total de dados na nuvem para o usuário:
+ * Apaga transações, regras recorrentes, zera orçamentos e limpa registros.
+ */
+export async function resetAllUserDataFromCloud(userId: string): Promise<void> {
+  if (!userId || !dbInstance) return;
+
+  try {
+    // 1. Apaga todas as transações e regras
+    await clearAllTransactionsFromCloud(userId);
+
+    // 2. Apaga categorias customizadas na nuvem
+    try {
+      const catColl = collection(dbInstance, 'users', userId, 'categories');
+      const catSnaps = await getDocs(catColl);
+      if (!catSnaps.empty) {
+        const batch = writeBatch(dbInstance);
+        catSnaps.docs.forEach((d) => batch.delete(d.ref));
+        await batch.commit();
+      }
+    } catch (eCat) {
+      console.warn('[Firestore Reset] Aviso ao limpar categorias:', eCat);
+    }
+
+    // 3. Zera orçamento e renda no Firestore
+    try {
+      const budgetRef = doc(dbInstance, 'users', userId, 'budgetConfig', 'current');
+      await setDoc(
+        budgetRef,
+        {
+          userId,
+          budgets: {},
+          defaultBudget: 0,
+          categoryBudgets: {},
+          monthlyIncomes: {},
+          defaultIncome: 0,
+          resetAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        },
+        { merge: true }
+      );
+    } catch (eBudget) {
+      console.warn('[Firestore Reset] Aviso ao zerar budgetConfig:', eBudget);
+    }
+
+    // 4. Zera o documento raiz do usuário
+    try {
+      const userDocRef = doc(dbInstance, 'users', userId);
+      await setDoc(
+        userDocRef,
+        {
+          userId,
+          totalTransactions: 0,
+          budgets: {},
+          defaultBudget: 0,
+          categoryBudgets: {},
+          monthlyIncomes: {},
+          defaultIncome: 0,
+          deletedItemIds: [],
+          resetAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        },
+        { merge: true }
+      );
+    } catch (eRoot) {
+      console.warn('[Firestore Reset] Aviso ao zerar doc raiz:', eRoot);
+    }
+
+    console.log('[Firestore Reset] Reset total na nuvem concluído com sucesso.');
+  } catch (error) {
+    console.warn('[Firestore Reset] Erro no reset total:', error);
+  }
+}
+
