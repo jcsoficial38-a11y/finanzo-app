@@ -406,7 +406,7 @@ export async function syncUserDataToCloud(userId: string, data: UserCloudData): 
       const txBatch = writeBatch(dbInstance);
       for (const tx of chunk) {
         const txRef = doc(dbInstance, 'users', userId, 'transactions', tx.id);
-        txBatch.set(txRef, { ...tx, userId }, { merge: true });
+        txBatch.set(txRef, { ...tx, userId, synced: true, pendingSync: false }, { merge: true });
       }
       await txBatch.commit();
     }
@@ -419,6 +419,25 @@ export async function syncUserDataToCloud(userId: string, data: UserCloudData): 
         ruleBatch.set(ruleRef, { ...rule, userId }, { merge: true });
       }
       await ruleBatch.commit();
+    }
+
+    // 6. Exclusão explícita no Firestore (deleteDoc) para itens apagados localmente
+    if (data.deletedItemIds && data.deletedItemIds.length > 0) {
+      try {
+        const delBatch = writeBatch(dbInstance);
+        for (const delId of data.deletedItemIds) {
+          const delRef = doc(dbInstance, 'users', userId, 'transactions', delId);
+          delBatch.delete(delRef);
+        }
+        await delBatch.commit();
+      } catch (delErr) {
+        console.warn('[Firestore Sync] Falha no batch delete de itens apagados, executando individualmente:', delErr);
+        await Promise.allSettled(
+          data.deletedItemIds.map((delId) =>
+            deleteDoc(doc(dbInstance, 'users', userId, 'transactions', delId))
+          )
+        );
+      }
     }
   } catch (error) {
     console.warn('[Firestore Sync] Operação em segundo plano:', error);

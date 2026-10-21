@@ -28,7 +28,10 @@ export interface Transaction {
   installmentTotal?: number;
   notes?: string;
   createdAt: number;
+  updatedAt?: number;
   pendingSync?: boolean;
+  synced?: boolean;
+  isDeleted?: boolean;
 }
 
 export interface TrashTransaction extends Transaction {

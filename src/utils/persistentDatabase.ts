@@ -234,6 +234,29 @@ export function clearDeletedItemIds(): void {
   saveToIndexedDB(PERSISTENT_STORAGE_KEYS.DELETED_ITEM_IDS, []).catch(() => {});
 }
 
+export function removeDeletedItemIds(ids: string | string[]): void {
+  if (typeof window === 'undefined') return;
+  const list = Array.isArray(ids) ? ids : [ids];
+  if (list.length === 0) return;
+  const toRemove = new Set(list);
+  const current = getDeletedItemIds().filter((id) => !toRemove.has(id));
+  try {
+    localStorage.setItem(PERSISTENT_STORAGE_KEYS.DELETED_ITEM_IDS, JSON.stringify(current));
+  } catch {
+    // ignore
+  }
+  saveToIndexedDB(PERSISTENT_STORAGE_KEYS.DELETED_ITEM_IDS, current).catch(() => {});
+}
+
+// Generate guaranteed unique IDs using crypto.randomUUID (UUID v4) with fallback
+export function generateUniqueId(prefix = 'tx'): string {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return `${prefix}-${crypto.randomUUID()}`;
+  }
+  return `${prefix}-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+}
+
+
 
 // Robust read from LocalStorage with error safety
 export function safeGetLocalStorage<T>(key: string, fallback: T): T {
@@ -311,7 +334,7 @@ export function recoverAllLocalTransactions(): Transaction[] {
             if (item && typeof item === 'object' && item.id) {
               const amt = Number(item.amount);
               const nameTrim = (item.name || '').trim().toLowerCase();
-              if (!isNaN(amt) && amt > 0 && !invalidNames.has(nameTrim)) {
+              if (!isNaN(amt) && amt > 0 && !invalidNames.has(nameTrim) && !isItemDeleted(item.id)) {
                 recoveredMap.set(item.id, {
                   id: item.id,
                   name: item.name.trim(),
@@ -334,7 +357,7 @@ export function recoverAllLocalTransactions(): Transaction[] {
               if (item && typeof item === 'object' && item.id) {
                 const amt = Number(item.amount);
                 const nameTrim = (item.name || '').trim().toLowerCase();
-                if (!isNaN(amt) && amt > 0 && !invalidNames.has(nameTrim)) {
+                if (!isNaN(amt) && amt > 0 && !invalidNames.has(nameTrim) && !isItemDeleted(item.id)) {
                   recoveredMap.set(item.id, {
                     ...item,
                     name: item.name.trim(),
@@ -363,6 +386,7 @@ export function deduplicateTransactions(transactions: Transaction[]): Transactio
 
   for (const t of transactions) {
     if (!t || !t.id) continue;
+    if (isItemDeleted(t.id)) continue;
     const amt = Number(t.amount);
     if (isNaN(amt) || amt <= 0) continue;
     const nameTrim = (t.name || '').trim().toLowerCase();

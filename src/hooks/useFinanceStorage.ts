@@ -38,6 +38,11 @@ import {
   deduplicateTransactions,
   clearAllIndexedDB,
   clearAllFinanzoLocalStorage,
+  addDeletedItemIds,
+  removeDeletedItemIds,
+  getDeletedItemIds,
+  isItemDeleted,
+  generateUniqueId,
 } from '../utils/persistentDatabase';
 import {
   subscribeToAuth,
@@ -445,26 +450,39 @@ export function useFinanceStorage() {
           }
 
           markHasRealUserData();
-          const cloudTxs = deduplicateTransactions(cloudData.transactions || []);
+          const deletedIds = new Set(getDeletedItemIds());
+          const cloudTxs = deduplicateTransactions(
+            (cloudData.transactions || []).filter((t) => !deletedIds.has(t.id))
+          );
           setTransactions((prevLocal) => {
-            const localPending = prevLocal.filter(t => t.pendingSync);
-            const localMap = new Map(prevLocal.map(t => [t.id, t]));
-            const cloudMap = new Map(cloudTxs.map(t => [t.id, t]));
+            const localPending = prevLocal.filter(
+              (t) => (t.pendingSync || t.synced === false) && !deletedIds.has(t.id)
+            );
+            const localMap = new Map(
+              prevLocal.filter((t) => !deletedIds.has(t.id)).map((t) => [t.id, t])
+            );
+            const cloudMap = new Map(cloudTxs.map((t) => [t.id, t]));
 
             const mergedMap = new Map<string, Transaction>();
             for (const [id, t] of cloudMap) {
-              mergedMap.set(id, t);
+              mergedMap.set(id, { ...t, synced: true, pendingSync: false });
             }
             for (const [id, t] of localMap) {
               const cloudT = cloudMap.get(id);
-              if (!cloudT || t.pendingSync || (t.createdAt && cloudT.createdAt && t.createdAt >= cloudT.createdAt)) {
+              if (
+                !cloudT ||
+                t.pendingSync ||
+                t.synced === false ||
+                (t.createdAt && cloudT.createdAt && t.createdAt >= cloudT.createdAt)
+              ) {
                 mergedMap.set(id, t);
               }
             }
             for (const t of localPending) {
               mergedMap.set(t.id, t);
             }
-            return Array.from(mergedMap.values()).sort((a, b) => b.createdAt - a.createdAt);
+            const deduped = deduplicateTransactions(Array.from(mergedMap.values()));
+            return deduped.sort((a, b) => b.createdAt - a.createdAt);
           });
           if (cloudData.incomeCategories.length > 0) {
             setIncomeCategories(cloudData.incomeCategories);
@@ -600,7 +618,7 @@ export function useFinanceStorage() {
   // 5b. Reconnection Offline-First Sync (Online Event Listener)
   useEffect(() => {
     const handleOnline = async () => {
-      if (!authUser || !dbInstance) return;
+      if (!authUser) return;
       setCloudSyncState('syncing');
       try {
         const pinData = getStoredPinData();
@@ -617,6 +635,7 @@ export function useFinanceStorage() {
           defaultIncome,
           userProfile,
           recurringRules,
+          deletedItemIds: getDeletedItemIds(),
           security: {
             pin: pinData.pin,
             pinEnabled: pinData.isEnabled,
@@ -628,7 +647,13 @@ export function useFinanceStorage() {
           },
         });
 
-        setTransactions((prev) => prev.map((t) => (t.pendingSync ? { ...t, pendingSync: false } : t)));
+        setTransactions((prev) =>
+          prev.map((t) =>
+            t.pendingSync || t.synced === false
+              ? { ...t, pendingSync: false, synced: true }
+              : t
+          )
+        );
         setCloudSyncState('synced');
         setLastSyncTime(new Date());
       } catch (err) {
@@ -663,6 +688,7 @@ export function useFinanceStorage() {
           defaultIncome,
           userProfile,
           recurringRules,
+          deletedItemIds: getDeletedItemIds(),
           security: {
             pin: pinData.pin,
             pinEnabled: pinData.isEnabled,
@@ -673,6 +699,13 @@ export function useFinanceStorage() {
             biometricCredentialId: bioData.keyId,
           },
         });
+        setTransactions((prev) =>
+          prev.map((t) =>
+            t.pendingSync || t.synced === false
+              ? { ...t, pendingSync: false, synced: true }
+              : t
+          )
+        );
         setCloudSyncState('synced');
         setLastSyncTime(new Date());
       } catch (err) {
@@ -1241,6 +1274,7 @@ export function useFinanceStorage() {
         }
 
         const idsToDelete = new Set(toTrash.map((t) => t.id));
+        addDeletedItemIds(toTrash.map((t) => t.id));
         return prev.filter((t) => !idsToDelete.has(t.id));
       });
     },
@@ -1254,9 +1288,10 @@ export function useFinanceStorage() {
       if (!target) return prevTrash;
 
       const { deletedAt, ...restoredTx } = target;
+      removeDeletedItemIds(id);
       setTransactions((prev) => {
         if (prev.some((t) => t.id === restoredTx.id)) return prev;
-        return [restoredTx, ...prev];
+        return [{ ...restoredTx, pendingSync: true, synced: false }, ...prev];
       });
 
       return prevTrash.filter((t) => t.id !== id);
@@ -1267,7 +1302,13 @@ export function useFinanceStorage() {
   const restoreAllFromTrash = useCallback(() => {
     setTrashTransactions((prevTrash) => {
       if (prevTrash.length === 0) return prevTrash;
-      const restored = prevTrash.map(({ deletedAt, ...t }) => t);
+      const ids = prevTrash.map((t) => t.id);
+      removeDeletedItemIds(ids);
+      const restored = prevTrash.map(({ deletedAt, ...t }) => ({
+        ...t,
+        pendingSync: true,
+        synced: false,
+      }));
       setTransactions((prev) => {
         const existing = new Set(prev.map((t) => t.id));
         const toAdd = restored.filter((t) => !existing.has(t.id));
@@ -1279,15 +1320,33 @@ export function useFinanceStorage() {
 
   // Esvazia permanentemente a lixeira local
   const emptyTrash = useCallback(() => {
-    setTrashTransactions([]);
+    setTrashTransactions((prevTrash) => {
+      const ids = prevTrash.map((t) => t.id);
+      if (ids.length > 0) {
+        addDeletedItemIds(ids);
+        if (authUser) {
+          ids.forEach((id) => {
+            deleteTransactionFromCloud(authUser.uid, id).catch(() => {});
+          });
+        }
+      }
+      return [];
+    });
     safeSetLocalStorage(PERSISTENT_STORAGE_KEYS.TRASH_TRANSACTIONS, []);
     saveToIndexedDB(PERSISTENT_STORAGE_KEYS.TRASH_TRANSACTIONS, []).catch(() => {});
-  }, []);
+  }, [authUser]);
 
   // Exclui permanentemente um único item da lixeira
-  const deletePermanentlyFromTrash = useCallback((id: string) => {
-    setTrashTransactions((prev) => prev.filter((t) => t.id !== id));
-  }, []);
+  const deletePermanentlyFromTrash = useCallback(
+    (id: string) => {
+      addDeletedItemIds(id);
+      if (authUser) {
+        deleteTransactionFromCloud(authUser.uid, id).catch(() => {});
+      }
+      setTrashTransactions((prev) => prev.filter((t) => t.id !== id));
+    },
+    [authUser]
+  );
 
   // Clear all transactions history (Zerar Histórico de Transações / Limpar Dados Salvos)
   // Zera todo o histórico de lançamentos locais para 0 transações, mantendo perfil, categorias e senhas

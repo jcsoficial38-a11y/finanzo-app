@@ -24,6 +24,7 @@ import {
   RotateCcw,
   Sliders,
   ChevronRight,
+  ChevronDown,
   Sparkles,
   Info,
 } from 'lucide-react';
@@ -153,6 +154,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
   const [showEmptyTrashConfirmModal, setShowEmptyTrashConfirmModal] = useState(false);
   const [clearSuccess, setClearSuccess] = useState('');
   const [trashSuccess, setTrashSuccess] = useState('');
+  const [isTrashOpen, setIsTrashOpen] = useState(false);
   const [isClearing, setIsClearing] = useState(false);
   const [isResettingAll, setIsResettingAll] = useState(false);
 
@@ -1025,149 +1027,175 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
             )}
           </div>
 
-          {/* SEÇÃO 5: LIXEIRA LOCAL (ARMAZENAMENTO INTERNO) */}
-          <div className="bg-amber-50/60 rounded-2xl border border-amber-200/80 p-4 space-y-3">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <div className="w-7 h-7 rounded-xl bg-amber-600 text-white flex items-center justify-center shadow-2xs shrink-0">
-                  <Trash2 className="w-3.5 h-3.5 text-white" />
+          {/* SEÇÃO 5: LIXEIRA LOCAL (ARMAZENAMENTO INTERNO - PADRÃO ACCORDION / RETRÁTIL) */}
+          <div className="bg-white rounded-2xl border border-slate-200/80 shadow-2xs overflow-hidden transition-all">
+            {/* Header Accordion Retrátil */}
+            <button
+              type="button"
+              onClick={() => setIsTrashOpen((prev) => !prev)}
+              className="w-full p-4 flex items-center justify-between text-left hover:bg-slate-50/80 transition-colors cursor-pointer"
+            >
+              <div className="flex items-center gap-3">
+                <div className="w-8 h-8 rounded-xl bg-amber-500 text-white flex items-center justify-center shadow-2xs shrink-0">
+                  <Trash2 className="w-4 h-4 text-white" />
                 </div>
                 <div>
-                  <h4 className="text-xs font-bold text-amber-950 flex items-center gap-1.5">
+                  <h4 className="text-xs font-bold text-slate-900 flex items-center gap-2">
                     <span>Lixeira Local</span>
-                    <span className="px-1.5 py-0.5 text-[9px] font-bold rounded-md bg-amber-200/80 text-amber-900">
+                    <span className="px-1.5 py-0.5 text-[10px] font-bold rounded-md bg-amber-100 text-amber-900 border border-amber-200/60">
                       {trashTransactions.length} {trashTransactions.length === 1 ? 'item' : 'itens'}
                     </span>
                   </h4>
-                  <p className="text-[11px] text-amber-800">
+                  <p className="text-[11px] text-slate-500">
                     Armazenamento interno do celular
                   </p>
                 </div>
               </div>
 
-              {trashTransactions.length > 0 && (
-                <div className="flex items-center gap-1">
-                  {onRestoreAllFromTrash && (
-                    <button
-                      type="button"
-                      onClick={onRestoreAllFromTrash}
-                      title="Restaurar todos os itens da lixeira"
-                      className="px-2 py-1 bg-white hover:bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-lg text-[10px] font-bold flex items-center gap-1 transition-colors cursor-pointer shadow-2xs"
-                    >
-                      <RotateCcw className="w-3 h-3 text-emerald-600" />
-                      <span>Restaurar Todos</span>
-                    </button>
-                  )}
-                  {onEmptyTrash && (
-                    <button
-                      type="button"
-                      onClick={() => setShowEmptyTrashConfirmModal(true)}
-                      title="Esvaziar lixeira permanentemente"
-                      className="px-2 py-1 bg-white hover:bg-rose-50 border border-rose-200 text-rose-700 rounded-lg text-[10px] font-bold flex items-center gap-1 transition-colors cursor-pointer shadow-2xs"
-                    >
-                      <Trash2 className="w-3 h-3 text-rose-600" />
-                      <span>Esvaziar</span>
-                    </button>
+              <div className="flex items-center gap-2 text-slate-400">
+                <ChevronDown
+                  className={`w-4 h-4 transition-transform duration-200 ${
+                    isTrashOpen ? 'rotate-180 text-amber-600' : 'text-slate-400'
+                  }`}
+                />
+              </div>
+            </button>
+
+            {/* Conteúdo Retrátil da Lixeira (Expandido apenas ao clicar) */}
+            {isTrashOpen && (
+              <div className="border-t border-slate-100 p-4 space-y-3 bg-slate-50/40">
+                {trashSuccess && (
+                  <div className="flex items-center gap-1.5 p-2 bg-emerald-50 text-emerald-700 rounded-xl text-xs font-medium border border-emerald-200 animate-in fade-in">
+                    <Check className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                    <span>{trashSuccess}</span>
+                  </div>
+                )}
+
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-[11px] text-slate-500 leading-relaxed">
+                    Lançamentos excluídos são preservados na memória local do aparelho, permitindo recuperação rápida sem perdas.
+                  </p>
+
+                  {trashTransactions.length > 0 && (
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      {onRestoreAllFromTrash && (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onRestoreAllFromTrash();
+                          }}
+                          title="Restaurar todos os itens da lixeira"
+                          className="px-2.5 py-1 bg-white hover:bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-lg text-[10px] font-bold flex items-center gap-1 transition-colors cursor-pointer shadow-2xs"
+                        >
+                          <RotateCcw className="w-3 h-3 text-emerald-600" />
+                          <span>Restaurar Todos</span>
+                        </button>
+                      )}
+                      {onEmptyTrash && (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setShowEmptyTrashConfirmModal(true);
+                          }}
+                          title="Esvaziar lixeira permanentemente"
+                          className="px-2.5 py-1 bg-white hover:bg-rose-50 border border-rose-200 text-rose-700 rounded-lg text-[10px] font-bold flex items-center gap-1 transition-colors cursor-pointer shadow-2xs"
+                        >
+                          <Trash2 className="w-3 h-3 text-rose-600" />
+                          <span>Esvaziar</span>
+                        </button>
+                      )}
+                    </div>
                   )}
                 </div>
-              )}
-            </div>
 
-            {trashSuccess && (
-              <div className="flex items-center gap-1.5 p-2 bg-emerald-50 text-emerald-700 rounded-xl text-xs font-medium border border-emerald-200 animate-in fade-in">
-                <Check className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-                <span>{trashSuccess}</span>
-              </div>
-            )}
+                {trashTransactions.length === 0 ? (
+                  <div className="p-3 bg-white rounded-xl border border-slate-200/70 text-center space-y-1">
+                    <p className="text-xs font-semibold text-slate-700">Lixeira vazia</p>
+                    <p className="text-[10px] text-slate-400">
+                      Nenhum lançamento foi excluído recentemente no aparelho.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="space-y-1.5 max-h-56 overflow-y-auto pr-0.5 divide-y divide-slate-100 bg-white rounded-xl border border-slate-200/80 p-2 shadow-2xs">
+                    {trashTransactions.map((tx) => {
+                      const cat = categoriesMap.get(tx.categoryId);
+                      const isIncome = tx.kind === 'income';
+                      const deletedDateStr = tx.deletedAt
+                        ? new Date(tx.deletedAt).toLocaleDateString('pt-BR', {
+                            day: '2-digit',
+                            month: '2-digit',
+                            hour: '2-digit',
+                            minute: '2-digit',
+                          })
+                        : '';
 
-            <p className="text-[11px] text-amber-900/90 leading-relaxed">
-              Lançamentos excluídos são preservados na memória local do aparelho, permitindo recuperação rápida sem perdas.
-            </p>
-
-            {trashTransactions.length === 0 ? (
-              <div className="p-3 bg-white/90 rounded-xl border border-amber-200/60 text-center space-y-1">
-                <p className="text-xs font-semibold text-slate-700">Lixeira vazia</p>
-                <p className="text-[10px] text-slate-400">
-                  Nenhum lançamento foi excluído recentemente no aparelho.
-                </p>
-              </div>
-            ) : (
-              <div className="space-y-1.5 max-h-56 overflow-y-auto pr-0.5 divide-y divide-amber-100 bg-white/90 rounded-xl border border-amber-200/70 p-2">
-                {trashTransactions.map((tx) => {
-                  const cat = categoriesMap.get(tx.categoryId);
-                  const isIncome = tx.kind === 'income';
-                  const deletedDateStr = tx.deletedAt
-                    ? new Date(tx.deletedAt).toLocaleDateString('pt-BR', {
-                        day: '2-digit',
-                        month: '2-digit',
-                        hour: '2-digit',
-                        minute: '2-digit',
-                      })
-                    : '';
-
-                  return (
-                    <div
-                      key={tx.id}
-                      className="pt-2 first:pt-0 flex items-center justify-between gap-2 text-xs"
-                    >
-                      <div className="flex items-center gap-2 min-w-0">
+                      return (
                         <div
-                          className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0"
-                          style={{
-                            backgroundColor: cat?.color ? `${cat.color}30` : '#f1f5f9',
-                          }}
+                          key={tx.id}
+                          className="pt-2 first:pt-0 flex items-center justify-between gap-2 text-xs"
                         >
-                          <CategoryIcon name={cat?.iconName} className="w-3.5 h-3.5 text-slate-700" />
-                        </div>
-                        <div className="min-w-0">
-                          <p className="font-semibold text-slate-800 truncate leading-tight">
-                            {tx.name}
-                          </p>
-                          <p className="text-[10px] text-slate-400 truncate">
-                            {cat?.name || 'Geral'} {deletedDateStr ? `• Excluído em ${deletedDateStr}` : ''}
-                          </p>
-                        </div>
-                      </div>
-
-                      <div className="flex items-center gap-2 shrink-0">
-                        <span
-                          className={`font-bold tabular-nums text-xs ${
-                            isIncome ? 'text-emerald-600' : 'text-slate-800'
-                          }`}
-                        >
-                          {isIncome ? '+' : '-'} {formatMoney(tx.amount)}
-                        </span>
-
-                        <div className="flex items-center gap-1">
-                          {onRestoreFromTrash && (
-                            <button
-                              type="button"
-                              onClick={() => {
-                                onRestoreFromTrash(tx.id);
-                                setTrashSuccess(`"${tx.name}" restaurado com sucesso!`);
-                                setTimeout(() => setTrashSuccess(''), 2500);
+                          <div className="flex items-center gap-2 min-w-0">
+                            <div
+                              className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0"
+                              style={{
+                                backgroundColor: cat?.color ? `${cat.color}25` : '#f1f5f9',
                               }}
-                              title="Restaurar este lançamento"
-                              className="p-1 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-700 transition-colors cursor-pointer"
                             >
-                              <RotateCcw className="w-3.5 h-3.5" />
-                            </button>
-                          )}
-                          {onDeletePermanentlyFromTrash && (
-                            <button
-                              type="button"
-                              onClick={() => onDeletePermanentlyFromTrash(tx.id)}
-                              title="Apagar definitivamente da memória"
-                              className="p-1 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-600 transition-colors cursor-pointer"
+                              <CategoryIcon name={cat?.iconName} className="w-3.5 h-3.5 text-slate-700" />
+                            </div>
+                            <div className="min-w-0">
+                              <p className="font-semibold text-slate-800 truncate leading-tight">
+                                {tx.name}
+                              </p>
+                              <p className="text-[10px] text-slate-400 truncate">
+                                {cat?.name || 'Geral'} {deletedDateStr ? `• Excluído em ${deletedDateStr}` : ''}
+                              </p>
+                            </div>
+                          </div>
+
+                          <div className="flex items-center gap-2 shrink-0">
+                            <span
+                              className={`font-bold tabular-nums text-xs ${
+                                isIncome ? 'text-emerald-600' : 'text-slate-800'
+                              }`}
                             >
-                              <X className="w-3.5 h-3.5" />
-                            </button>
-                          )}
+                              {isIncome ? '+' : '-'} {formatMoney(tx.amount)}
+                            </span>
+
+                            <div className="flex items-center gap-1">
+                              {onRestoreFromTrash && (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    onRestoreFromTrash(tx.id);
+                                    setTrashSuccess(`"${tx.name}" restaurado com sucesso!`);
+                                    setTimeout(() => setTrashSuccess(''), 2500);
+                                  }}
+                                  title="Restaurar este lançamento"
+                                  className="p-1 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-700 transition-colors cursor-pointer"
+                                >
+                                  <RotateCcw className="w-3.5 h-3.5" />
+                                </button>
+                              )}
+                              {onDeletePermanentlyFromTrash && (
+                                <button
+                                  type="button"
+                                  onClick={() => onDeletePermanentlyFromTrash(tx.id)}
+                                  title="Apagar definitivamente da memória"
+                                  className="p-1 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-600 transition-colors cursor-pointer"
+                                >
+                                  <X className="w-3.5 h-3.5" />
+                                </button>
+                              )}
+                            </div>
+                          </div>
                         </div>
-                      </div>
-                    </div>
-                  );
-                })}
+                      );
+                    })}
+                  </div>
+                )}
               </div>
             )}
           </div>
