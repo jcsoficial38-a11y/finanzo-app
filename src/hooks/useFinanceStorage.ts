@@ -810,17 +810,29 @@ export function useFinanceStorage() {
     return defaultBudget;
   }, [budgets, currentMonthKey, defaultBudget]);
 
-  // Filter transactions for current month
+  // Filter transactions for current month with strict deduplication of fixed/recurring entries per month
   const currentMonthTransactions = useMemo(() => {
-    return transactions
-      .filter((t) => t.monthKey === currentMonthKey)
-      .sort((a, b) => {
-        // Sort descending by date, then by creation
-        if (a.date !== b.date) {
-          return b.date.localeCompare(a.date);
+    const monthTxs = transactions.filter((t) => t.monthKey === currentMonthKey);
+    const seenMap = new Map<string, Transaction>();
+
+    for (const t of monthTxs) {
+      const dedupKey = t.recurringGroupId ? `${t.recurringGroupId}_${t.monthKey}` : t.id;
+      if (!seenMap.has(dedupKey)) {
+        seenMap.set(dedupKey, t);
+      } else {
+        const existing = seenMap.get(dedupKey)!;
+        if (t.createdAt > existing.createdAt) {
+          seenMap.set(dedupKey, t);
         }
-        return b.createdAt - a.createdAt;
-      });
+      }
+    }
+
+    return Array.from(seenMap.values()).sort((a, b) => {
+      if (a.date !== b.date) {
+        return b.date.localeCompare(a.date);
+      }
+      return b.createdAt - a.createdAt;
+    });
   }, [transactions, currentMonthKey]);
 
   // Month Summary calculation
