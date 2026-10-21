@@ -246,3 +246,56 @@ export function getMasterSnapshot(): MasterBackupPayload | null {
 
   return null;
 }
+
+export function recoverAllLocalTransactions(): Transaction[] {
+  if (typeof window === 'undefined') return [];
+  const recoveredMap = new Map<string, Transaction>();
+
+  try {
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (!key) continue;
+      try {
+        const raw = localStorage.getItem(key);
+        if (!raw) continue;
+        const parsed = JSON.parse(raw);
+
+        if (Array.isArray(parsed)) {
+          for (const item of parsed) {
+            if (item && typeof item === 'object' && item.id && (item.amount !== undefined || item.name)) {
+              recoveredMap.set(item.id, {
+                id: item.id,
+                name: item.name || 'Lançamento Recuperado',
+                amount: Number(item.amount) || 0,
+                date: item.date || new Date().toISOString().slice(0, 10),
+                monthKey: item.monthKey || (item.date ? item.date.slice(0, 7) : new Date().toISOString().slice(0, 7)),
+                kind: item.kind === 'income' ? 'income' : 'expense',
+                categoryId: item.categoryId || 'exp-outros',
+                expenseType: item.expenseType || 'variable',
+                notes: item.notes,
+                createdAt: item.createdAt || Date.now(),
+                pendingSync: true,
+              });
+            }
+          }
+        } else if (parsed && typeof parsed === 'object') {
+          if (Array.isArray(parsed.transactions)) {
+            for (const item of parsed.transactions) {
+              if (item && typeof item === 'object' && item.id) {
+                recoveredMap.set(item.id, {
+                  ...item,
+                  pendingSync: true,
+                });
+              }
+            }
+          }
+        }
+      } catch {}
+    }
+  } catch (err) {
+    console.warn('[LocalRecovery] Erro ao varrer localStorage:', err);
+  }
+
+  return Array.from(recoveredMap.values());
+}
+

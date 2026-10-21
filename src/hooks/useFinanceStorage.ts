@@ -34,6 +34,7 @@ import {
   requestPersistentStorage,
   getFromIndexedDB,
   saveToIndexedDB,
+  recoverAllLocalTransactions,
 } from '../utils/persistentDatabase';
 import {
   subscribeToAuth,
@@ -95,23 +96,35 @@ export function useFinanceStorage() {
     return INITIAL_EXPENSE_CATEGORIES;
   });
 
-  // Transactions - Reads from LocalStorage, with Master Snapshot fallback
+  // Transactions - Reads from LocalStorage, Master Snapshot & Local Recovery scan
   const [transactions, setTransactions] = useState<Transaction[]>(() => {
+    const recovered = recoverAllLocalTransactions();
     const stored = safeGetLocalStorage<Transaction[] | null>(PERSISTENT_STORAGE_KEYS.TRANSACTIONS, null);
-    if (stored && Array.isArray(stored)) {
-      return stored.map((t) => ({
-        ...t,
-        categoryId: normalizeCategoryId(t.categoryId),
-      }));
-    }
     const backup = getMasterSnapshot();
-    if (backup?.transactions && Array.isArray(backup.transactions)) {
-      return backup.transactions.map((t) => ({
-        ...t,
-        categoryId: normalizeCategoryId(t.categoryId),
-      }));
+
+    const mergedMap = new Map<string, Transaction>();
+    if (recovered && recovered.length > 0) {
+      for (const t of recovered) {
+        mergedMap.set(t.id, t);
+      }
     }
-    return [];
+    if (stored && Array.isArray(stored)) {
+      for (const t of stored) {
+        mergedMap.set(t.id, {
+          ...t,
+          categoryId: normalizeCategoryId(t.categoryId),
+        });
+      }
+    }
+    if (backup?.transactions && Array.isArray(backup.transactions)) {
+      for (const t of backup.transactions) {
+        mergedMap.set(t.id, {
+          ...t,
+          categoryId: normalizeCategoryId(t.categoryId),
+        });
+      }
+    }
+    return Array.from(mergedMap.values()).sort((a, b) => b.createdAt - a.createdAt);
   });
 
   // Local Trash (Lixeira Local no Armazenamento Interno)
