@@ -23,6 +23,17 @@ interface CategorySlice {
   endAngle: number;
 }
 
+const LEGACY_CAT_MAPPING: Record<string, string> = {
+  'exp-transporte': 'exp-carro',
+  'exp-lazer': 'exp-restaurante',
+  'exp-contas': 'exp-internet',
+  'exp-tecnologia': 'exp-compras-online',
+};
+
+function normalizeCatId(id: string): string {
+  return LEGACY_CAT_MAPPING[id] || id;
+}
+
 export const ChartsView: React.FC<ChartsViewProps> = ({
   transactions = [],
   categories = [],
@@ -31,16 +42,21 @@ export const ChartsView: React.FC<ChartsViewProps> = ({
   const { formatMoney } = useCurrencyVisibility();
   const [activeCategoryIndex, setActiveCategoryIndex] = useState<number | null>(null);
 
-  // Group expenses by category memoized for instant 60fps rendering
+  // Group expenses by category memoized for instant 60fps rendering with deduplication and zero-filtering
   const { slices, totalExpenses } = useMemo(() => {
-    const expenseTransactions = (transactions || []).filter((t) => t?.kind === 'expense');
+    const expenseTransactions = (transactions || []).filter(
+      (t) => t?.kind === 'expense' && Number(t?.amount) > 0
+    );
     const categoryTotalsMap = new Map<string, number>();
     let total = 0;
 
     for (const t of expenseTransactions) {
-      const current = categoryTotalsMap.get(t.categoryId) || 0;
-      categoryTotalsMap.set(t.categoryId, current + t.amount);
-      total += t.amount;
+      const catId = normalizeCatId(t.categoryId || 'exp-outros');
+      const amt = Number(t.amount) || 0;
+      if (amt <= 0) continue;
+      const current = categoryTotalsMap.get(catId) || 0;
+      categoryTotalsMap.set(catId, current + amt);
+      total += amt;
     }
 
     const builtSlices: CategorySlice[] = [];
@@ -51,7 +67,9 @@ export const ChartsView: React.FC<ChartsViewProps> = ({
     );
 
     for (const [catId, amount] of sortedCategoryIds) {
-      const cat = categories.find((c) => c.id === catId);
+      const cat = categories.find(
+        (c) => c.id === catId || normalizeCatId(c.id) === catId
+      );
       const percentage = total > 0 ? (amount / total) * 100 : 0;
       const sliceAngle = total > 0 ? (amount / total) * 360 : 0;
 
