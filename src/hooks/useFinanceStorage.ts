@@ -124,7 +124,17 @@ export function useFinanceStorage() {
         });
       }
     }
-    return Array.from(mergedMap.values()).sort((a, b) => b.createdAt - a.createdAt);
+    const invalidNames = new Set(['freelance', 'investimentos', 'salário', 'salario', 'educação', 'educacao', 'casa', 'padaria', 'guloseimas', 'lançamento recuperado', '']);
+
+    const validTxs = Array.from(mergedMap.values()).filter((t) => {
+      const amt = Number(t.amount);
+      if (isNaN(amt) || amt <= 0) return false;
+      const nameTrim = (t.name || '').trim().toLowerCase();
+      if (invalidNames.has(nameTrim) && amt <= 0) return false;
+      return true;
+    });
+
+    return validTxs.sort((a, b) => b.createdAt - a.createdAt);
   });
 
   // Local Trash (Lixeira Local no Armazenamento Interno)
@@ -440,7 +450,14 @@ export function useFinanceStorage() {
           }
 
           markHasRealUserData();
-          const cloudTxs = cloudData.transactions || [];
+          const invalidNames = new Set(['freelance', 'investimentos', 'salário', 'salario', 'educação', 'educacao', 'casa', 'padaria', 'guloseimas', 'lançamento recuperado', '']);
+          const cloudTxs = (cloudData.transactions || []).filter((t) => {
+            const amt = Number(t.amount);
+            if (isNaN(amt) || amt <= 0) return false;
+            const nameTrim = (t.name || '').trim().toLowerCase();
+            if (invalidNames.has(nameTrim) && amt <= 0) return false;
+            return true;
+          });
           setTransactions((prevLocal) => {
             const localPending = prevLocal.filter(t => t.pendingSync);
             const localMap = new Map(prevLocal.map(t => [t.id, t]));
