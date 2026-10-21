@@ -427,7 +427,27 @@ export function useFinanceStorage() {
           }
 
           markHasRealUserData();
-          setTransactions(cloudData.transactions);
+          const cloudTxs = cloudData.transactions || [];
+          setTransactions((prevLocal) => {
+            const localPending = prevLocal.filter(t => t.pendingSync);
+            const localMap = new Map(prevLocal.map(t => [t.id, t]));
+            const cloudMap = new Map(cloudTxs.map(t => [t.id, t]));
+
+            const mergedMap = new Map<string, Transaction>();
+            for (const [id, t] of cloudMap) {
+              mergedMap.set(id, t);
+            }
+            for (const [id, t] of localMap) {
+              const cloudT = cloudMap.get(id);
+              if (!cloudT || t.pendingSync || (t.createdAt && cloudT.createdAt && t.createdAt >= cloudT.createdAt)) {
+                mergedMap.set(id, t);
+              }
+            }
+            for (const t of localPending) {
+              mergedMap.set(t.id, t);
+            }
+            return Array.from(mergedMap.values()).sort((a, b) => b.createdAt - a.createdAt);
+          });
           if (cloudData.incomeCategories.length > 0) {
             setIncomeCategories(cloudData.incomeCategories);
           }
@@ -558,6 +578,52 @@ export function useFinanceStorage() {
       isMounted = false;
     };
   }, [authUser?.uid]);
+
+  // 5b. Reconnection Offline-First Sync (Online Event Listener)
+  useEffect(() => {
+    const handleOnline = async () => {
+      if (!authUser || !dbInstance) return;
+      setCloudSyncState('syncing');
+      try {
+        const pinData = getStoredPinData();
+        const bioData = getStoredBiometricData();
+
+        await syncUserDataToCloud(authUser.uid, {
+          transactions,
+          incomeCategories,
+          expenseCategories,
+          budgets,
+          defaultBudget,
+          categoryBudgets,
+          monthlyIncomes,
+          defaultIncome,
+          userProfile,
+          recurringRules,
+          security: {
+            pin: pinData.pin,
+            pinEnabled: pinData.isEnabled,
+            biometricEnabled: bioData.isEnabled,
+            biometricRegistered: bioData.isRegistered,
+            biometricType: bioData.type,
+            biometricDate: bioData.registeredDate,
+            biometricCredentialId: bioData.keyId,
+          },
+        });
+
+        setTransactions((prev) => prev.map((t) => (t.pendingSync ? { ...t, pendingSync: false } : t)));
+        setCloudSyncState('synced');
+        setLastSyncTime(new Date());
+      } catch (err) {
+        console.warn('[OfflineSync] Erro ao sincronizar itens pendentes na reconexão:', err);
+        setCloudSyncState('error');
+      }
+    };
+
+    window.addEventListener('online', handleOnline);
+    return () => {
+      window.removeEventListener('online', handleOnline);
+    };
+  }, [authUser, transactions, incomeCategories, expenseCategories, budgets, defaultBudget, categoryBudgets, monthlyIncomes, defaultIncome, userProfile, recurringRules]);
 
   // 5. Auto-sync to Cloud (Debounced to avoid quota waste)
   useEffect(() => {
@@ -923,6 +989,7 @@ export function useFinanceStorage() {
               recurringGroupId,
               notes,
               createdAt: Date.now() + m,
+              pendingSync: true,
             });
           }
 
@@ -943,6 +1010,7 @@ export function useFinanceStorage() {
           recurringGroupId,
           notes,
           createdAt: Date.now(),
+          pendingSync: true,
         };
 
         setTransactions((prev) => [newTx, ...prev]);
@@ -976,6 +1044,7 @@ export function useFinanceStorage() {
           installmentTotal: count,
           notes,
           createdAt: Date.now() + i,
+          pendingSync: true,
         };
         createdTxs.push(tx);
       }
@@ -1002,7 +1071,7 @@ export function useFinanceStorage() {
 
         return prev.map((t) => {
           if (t.id === transactionId) {
-            return { ...t, ...updates };
+            return { ...t, ...updates, pendingSync: true };
           }
           // If requested, also apply new name/amount/category to subsequent future months of the same recurring series
           if (
@@ -1016,6 +1085,7 @@ export function useFinanceStorage() {
               name: updates.name !== undefined ? updates.name : t.name,
               amount: updates.amount !== undefined ? updates.amount : t.amount,
               categoryId: updates.categoryId !== undefined ? updates.categoryId : t.categoryId,
+              pendingSync: true,
             };
           }
           return t;
