@@ -25,6 +25,8 @@ import { CategoryManagerModal } from './components/CategoryManagerModal';
 import { CategoryManagerView } from './components/CategoryManagerView';
 import { ProfileModal } from './components/ProfileModal';
 import { LockScreen } from './components/LockScreen';
+import { SidebarDrawer } from './components/SidebarDrawer';
+import { GoogleSignInButton } from './components/GoogleSignInButton';
 import { getPinStatus, getStoredPinData } from './utils/pinSecurity';
 import { getBiometricStatus, getStoredBiometricData } from './utils/biometricSecurity';
 import { saveProfileAndSecurityToCloud, checkRedirectResult } from './services/firebase';
@@ -32,7 +34,7 @@ import { ActiveTab } from './types/finance';
 import { formatCurrency } from './utils/formatters';
 import { exportMonthToCSV } from './utils/csvExport';
 import { CurrencyVisibilityProvider } from './context/CurrencyVisibilityContext';
-import { ArrowRight, PieChart, Sparkles, UserCheck, Calendar, Layers } from 'lucide-react';
+import { ArrowRight, PieChart, Sparkles, UserCheck, Calendar, Layers, Cloud } from 'lucide-react';
 
 export default function App() {
   const {
@@ -69,6 +71,9 @@ export default function App() {
     restoreFromBackup,
     authUser,
     cloudSyncState,
+    driveSyncState,
+    lastDriveSyncTime,
+    syncDriveNow,
     loginWithGoogle,
     logoutUser,
     syncNow,
@@ -76,6 +81,7 @@ export default function App() {
 
   const [activeTab, setActiveTab] = useState<ActiveTab>('dashboard');
   const [historyScope, setHistoryScope] = useState<'currentMonth' | 'allMonths'>('currentMonth');
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [isBudgetModalOpen, setIsBudgetModalOpen] = useState(false);
   const [isCategoryModalOpen, setIsCategoryModalOpen] = useState(false);
@@ -151,7 +157,9 @@ export default function App() {
           onSelectMonth={(key) => setCurrentMonthKey(key)}
           onOpenBudgetModal={() => setIsBudgetModalOpen(true)}
           onOpenProfileModal={() => setIsProfileModalOpen(true)}
+          onOpenMenu={() => setIsSidebarOpen(true)}
           isCloudConnected={!!authUser}
+          isDriveConnected={!!authUser && driveSyncState !== 'error'}
         />
 
         {/* Main Content Area */}
@@ -159,7 +167,7 @@ export default function App() {
           {/* TAB 1: Início (Dashboard / Resumos) */}
           {activeTab === 'dashboard' && (
             <div className="space-y-4 animate-in fade-in duration-150">
-              {/* Resumos Visuais Principais */}
+              {/* Resumos Visuais Principais (Cards de Orçamento, Gastos e Saldos) */}
               <SummaryCards
                 summary={monthSummary}
                 onEditBudget={() => setIsBudgetModalOpen(true)}
@@ -407,6 +415,23 @@ export default function App() {
             }).catch(() => {});
           }
         }}
+      />
+
+      <SidebarDrawer
+        isOpen={isSidebarOpen}
+        onClose={() => setIsSidebarOpen(false)}
+        activeTab={activeTab}
+        onChangeTab={setActiveTab}
+        profile={userProfile}
+        authUser={authUser}
+        driveSyncState={driveSyncState}
+        lastDriveSyncTime={lastDriveSyncTime}
+        onLoginGoogle={loginWithGoogle}
+        onLogoutGoogle={logoutUser}
+        onSyncDriveNow={syncDriveNow}
+        onOpenProfileModal={() => setIsProfileModalOpen(true)}
+        onOpenBudgetModal={() => setIsBudgetModalOpen(true)}
+        onOpenCategoryModal={() => setIsCategoryModalOpen(true)}
       />
 
       </div>

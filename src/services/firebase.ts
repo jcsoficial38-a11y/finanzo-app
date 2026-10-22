@@ -46,14 +46,19 @@ import {
   RecurringExpenseRule,
 } from '../types/finance';
 
-// 2. CONFIGURAÇÃO OFICIAL DO FIREBASE:
+import {
+  setGoogleDriveAccessToken,
+  clearGoogleDriveAccessToken,
+} from './googleDriveService';
+
+// 2. CONFIGURAÇÃO OFICIAL DO FIREBASE (Sincronizado com firebase-applet-config.json):
 export const firebaseConfig = {
-  apiKey: "AIzaSyDLxKnZW-_9J8RAspiA7ul7gtE7F63wr_M",
-  authDomain: "impressive-superstate-csmzh.firebaseapp.com",
-  projectId: "impressive-superstate-csmzh",
-  storageBucket: "impressive-superstate-csmzh.firebasestorage.app",
-  messagingSenderId: "1079469168199",
-  appId: "1:1079469168199:web:d58392f19152a1c698c362"
+  apiKey: appletConfig.apiKey || "AIzaSyD3aLhGNqvbucm34Ycq_OmdfaRPHRTmKLE",
+  authDomain: appletConfig.authDomain || "gen-lang-client-0178714244.firebaseapp.com",
+  projectId: appletConfig.projectId || "gen-lang-client-0178714244",
+  storageBucket: appletConfig.storageBucket || "gen-lang-client-0178714244.firebasestorage.app",
+  messagingSenderId: appletConfig.messagingSenderId || "160506783088",
+  appId: appletConfig.appId || "1:160506783088:web:de7d439b48ee918c745bb5",
 };
 
 // 1. TRATAMENTO DE ERROS E INICIALIZAÇÃO SEGURA (TRY / CATCH):
@@ -70,8 +75,9 @@ try {
   } else {
     appInstance = !getApps().length ? initializeApp(firebaseConfig) : getApp();
 
-    const dbId = (appletConfig.firestoreDatabaseId && appletConfig.firestoreDatabaseId !== '(default)')
-      ? appletConfig.firestoreDatabaseId
+    const configAny = appletConfig as any;
+    const dbId = (configAny.firestoreDatabaseId && configAny.firestoreDatabaseId !== '(default)')
+      ? configAny.firestoreDatabaseId
       : undefined;
 
     // Ativa cache offline local (IndexedDB) no Firestore para carregamento instantâneo offline-first
@@ -113,6 +119,8 @@ try {
           });
       }
       googleProviderInstance = new GoogleAuthProvider();
+      googleProviderInstance.addScope('https://www.googleapis.com/auth/drive.appdata');
+      googleProviderInstance.addScope('https://www.googleapis.com/auth/drive.file');
       googleProviderInstance.setCustomParameters({ prompt: 'select_account' });
 
       // Captura inicial do retorno do redirecionamento do Google (signInWithRedirect)
@@ -120,6 +128,10 @@ try {
         .then((redirectUser) => {
           if (redirectUser?.user) {
             console.log('[FirebaseAuth] Usuário autenticado com sucesso pós-redirecionamento:', redirectUser.user.email);
+            const credential = GoogleAuthProvider.credentialFromResult(redirectUser);
+            if (credential?.accessToken) {
+              setGoogleDriveAccessToken(credential.accessToken);
+            }
           }
         })
         .catch((redirectErr) => {
@@ -161,6 +173,10 @@ export async function checkRedirectResult(): Promise<FirebaseUser | null> {
     const result = await getRedirectResult(authInstance);
     if (result && result.user) {
       console.log('[FirebaseAuth] Login capturado com sucesso via redirect:', result.user.email);
+      const credential = GoogleAuthProvider.credentialFromResult(result);
+      if (credential?.accessToken) {
+        setGoogleDriveAccessToken(credential.accessToken);
+      }
       return result.user;
     }
     return null;
@@ -187,13 +203,19 @@ export async function loginWithGoogle(): Promise<FirebaseUser | null> {
     throw err;
   }
 
-  // 1. Instanciação correta do provedor Google
+  // 1. Instanciação correta do provedor Google com escopos do Google Drive
   const provider = new GoogleAuthProvider();
+  provider.addScope('https://www.googleapis.com/auth/drive.appdata');
+  provider.addScope('https://www.googleapis.com/auth/drive.file');
   provider.setCustomParameters({ prompt: 'select_account' });
 
   try {
     // 2. Chamada de login segura: signInWithPopup(auth, provider) com EXATAMENTE esses dois parâmetros válidos
     const result = await signInWithPopup(currentAuth, provider);
+    const credential = GoogleAuthProvider.credentialFromResult(result);
+    if (credential?.accessToken) {
+      setGoogleDriveAccessToken(credential.accessToken);
+    }
     return result.user;
   } catch (popupErr: any) {
     console.warn('[FirebaseAuth] Popup bloqueado ou indisponível. Verificando fallback...', popupErr);
@@ -240,12 +262,14 @@ export async function loginWithGoogle(): Promise<FirebaseUser | null> {
 
 // Desconectar Sessão
 export async function logoutUser(): Promise<void> {
-  if (!authInstance) return;
-  try {
-    await signOut(authInstance);
-  } catch (err) {
-    console.warn('[FirebaseAuth] Erro no logout:', err);
+  if (authInstance) {
+    try {
+      await signOut(authInstance);
+    } catch (err) {
+      console.warn('[FirebaseAuth] Erro no logout:', err);
+    }
   }
+  clearGoogleDriveAccessToken();
 }
 
 // Observador onAuthStateChanged para Reconhecimento Imediato e Sessão Persistente

@@ -5,6 +5,8 @@ import {
   Calendar,
   Eye,
   EyeOff,
+  Menu,
+  Cloud,
 } from 'lucide-react';
 import { formatMonthYearLabel, getCurrentMonthKey } from '../utils/dateUtils';
 import { MonthSelectorModal } from './MonthSelectorModal';
@@ -23,6 +25,8 @@ interface HeaderProps {
   onOpenProfileModal: () => void;
   onResetData?: () => void;
   isCloudConnected?: boolean;
+  onOpenMenu?: () => void;
+  isDriveConnected?: boolean;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -34,6 +38,8 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenBudgetModal,
   onOpenProfileModal,
   isCloudConnected,
+  onOpenMenu,
+  isDriveConnected,
 }) => {
   const { hideValues, toggleHideValues } = useCurrencyVisibility();
   const { theme } = useAppTheme();
@@ -56,8 +62,20 @@ export const Header: React.FC<HeaderProps> = ({
       <header className="sticky top-0 z-30 bg-white/95 backdrop-blur-md border-b border-slate-100/80 px-4 pt-safe pb-2">
         {/* Top Brand & Profile row */}
         <div className="flex items-center justify-between h-11 gap-2">
-          {/* Brand Left */}
-          <div className="flex items-center gap-2 min-w-0">
+          {/* Brand Left with Retractable Menu Button */}
+          <div className="flex items-center gap-1.5 min-w-0">
+            {onOpenMenu && (
+              <button
+                type="button"
+                onClick={onOpenMenu}
+                title="Abrir Menu Lateral"
+                aria-label="Abrir Menu Lateral"
+                className="w-8 h-8 rounded-xl flex items-center justify-center text-slate-600 hover:text-slate-900 hover:bg-slate-100 active:scale-95 transition-all cursor-pointer shrink-0"
+              >
+                <Menu className="w-5 h-5" />
+              </button>
+            )}
+
             <div
               className={`w-7 h-7 rounded-xl bg-gradient-to-tr ${theme.badgeGradient} flex items-center justify-center ${theme.badgeTextColor} text-xs font-bold shadow-xs shrink-0`}
             >
@@ -101,7 +119,7 @@ export const Header: React.FC<HeaderProps> = ({
             <button
               type="button"
               onClick={onOpenProfileModal}
-              title={`Perfil: ${name} (${login})${isCloudConnected ? ' • Sincronizado na Nuvem' : ''}`}
+              title={`Perfil: ${name} (${login})${isDriveConnected ? ' • Sincronizado no Google Drive' : isCloudConnected ? ' • Sincronizado na Nuvem' : ''}`}
               aria-label={`Abrir perfil de ${name}`}
               className="flex items-center gap-1.5 p-1 rounded-2xl hover:bg-slate-100/90 active:bg-slate-200/70 border border-slate-200/80 transition-all shadow-2xs active:scale-95 cursor-pointer bg-white group"
             >
@@ -124,9 +142,9 @@ export const Header: React.FC<HeaderProps> = ({
                     </span>
                   )}
                 </div>
-                {isCloudConnected && (
+                {(isDriveConnected || isCloudConnected) && (
                   <span
-                    title="Sincronizado na Nuvem (Firestore)"
+                    title={isDriveConnected ? 'Sincronizado no Google Drive' : 'Sincronizado na Nuvem'}
                     className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 bg-emerald-500 border-2 border-white rounded-full shadow-2xs"
                   />
                 )}
