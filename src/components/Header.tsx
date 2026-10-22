@@ -119,7 +119,7 @@ export const Header: React.FC<HeaderProps> = ({
             <button
               type="button"
               onClick={onOpenProfileModal}
-              title={`Perfil: ${name} (${login})${isDriveConnected ? ' • Sincronizado no Google Drive' : isCloudConnected ? ' • Sincronizado na Nuvem' : ''}`}
+              title={`Perfil: ${name} (${login}) • Armazenamento Local`}
               aria-label={`Abrir perfil de ${name}`}
               className="flex items-center gap-1.5 p-1 rounded-2xl hover:bg-slate-100/90 active:bg-slate-200/70 border border-slate-200/80 transition-all shadow-2xs active:scale-95 cursor-pointer bg-white group"
             >
@@ -142,12 +142,6 @@ export const Header: React.FC<HeaderProps> = ({
                     </span>
                   )}
                 </div>
-                {(isDriveConnected || isCloudConnected) && (
-                  <span
-                    title={isDriveConnected ? 'Sincronizado no Google Drive' : 'Sincronizado na Nuvem'}
-                    className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 bg-emerald-500 border-2 border-white rounded-full shadow-2xs"
-                  />
-                )}
               </div>
 
               {/* Real user name in the main header */}

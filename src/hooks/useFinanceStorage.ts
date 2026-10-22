@@ -740,225 +740,204 @@ export function useFinanceStorage() {
     recurringRules,
   ]);
 
-  // Google Drive: Função para salvar/atualizar 'backup_app.json' no appDataFolder
-  const syncToGoogleDrive = useCallback(async (): Promise<boolean> => {
-    const token = getGoogleDriveAccessToken();
-    if (!token) return false;
+  // 1. Exportar Backup Local Instantâneo (backup_app.json)
+  const exportBackup = useCallback(() => {
+    const freshProfile = getStoredUserProfile() || userProfile;
+    const pinData = getStoredPinData();
+    const bioData = getStoredBiometricData();
 
-    if (typeof navigator !== 'undefined' && !navigator.onLine) {
-      setDriveSyncState('offline');
-      return false;
-    }
+    const payload = {
+      version: '2.0.0',
+      exportedAt: new Date().toISOString(),
+      appName: 'Finanzo - Finanças Pessoais',
+      userProfile: freshProfile,
+      incomeCategories,
+      expenseCategories,
+      transactions,
+      recurringRules,
+      budgets,
+      defaultBudget,
+      categoryBudgets,
+      monthlyIncomes,
+      defaultIncome,
+      trashTransactions,
+      security: {
+        pin: pinData.pin,
+        pinEnabled: pinData.isEnabled,
+        biometricEnabled: bioData.isEnabled,
+        biometricRegistered: bioData.isRegistered,
+        biometricType: bioData.type,
+      },
+    };
 
-    setDriveSyncState('syncing');
-    try {
-      const pinData = getStoredPinData();
-      const bioData = getStoredBiometricData();
-
-      const payload: GoogleDriveBackupPayload = {
-        version: '2.0.0',
-        updatedAt: new Date().toISOString(),
-        transactions,
-        incomeCategories,
-        expenseCategories,
-        budgets,
-        defaultBudget,
-        categoryBudgets,
-        monthlyIncomes,
-        defaultIncome,
-        userProfile,
-        recurringRules,
-        trashTransactions,
-        deletedItemIds: getDeletedItemIds(),
-        security: {
-          pin: pinData.pin,
-          pinEnabled: pinData.isEnabled,
-          biometricEnabled: bioData.isEnabled,
-          biometricRegistered: bioData.isRegistered,
-          biometricType: bioData.type,
-          biometricDate: bioData.registeredDate,
-          biometricCredentialId: bioData.keyId,
-        },
-      };
-
-      await uploadAppDataBackup(token, payload);
-      setDriveSyncState('synced');
-      setLastDriveSyncTime(new Date());
-      return true;
-    } catch (err: any) {
-      console.warn('[GoogleDrive] Falha ao sincronizar com Google Drive:', err);
-      setDriveSyncState('error');
-      return false;
-    }
+    const jsonString = JSON.stringify(payload, null, 2);
+    const blob = new Blob([jsonString], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'backup_app.json';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
   }, [
-    transactions,
+    userProfile,
     incomeCategories,
     expenseCategories,
+    transactions,
+    recurringRules,
     budgets,
     defaultBudget,
     categoryBudgets,
     monthlyIncomes,
     defaultIncome,
-    userProfile,
-    recurringRules,
     trashTransactions,
   ]);
 
-  // Google Drive: Restauração Automática ao Entrar (Restaura 'backup_app.json' do appDataFolder)
-  useEffect(() => {
-    if (!authUser) return;
-
-    let isCancelled = false;
-    const checkAndRestoreFromDrive = async () => {
-      const token = getGoogleDriveAccessToken();
-      if (!token) return;
-
+  // 2. Importar Backup Local Instantâneo (Restaura backup_app.json em 1 segundo)
+  const importBackup = useCallback(
+    async (file: File): Promise<{ success: boolean; message: string; count?: number }> => {
       try {
-        setDriveSyncState('syncing');
-        const backupFile = await findAppDataBackupFile(token);
+        const text = await file.text();
+        const data = JSON.parse(text);
 
-        if (backupFile?.id) {
-          const driveData = await downloadAppDataBackup(token, backupFile.id);
-          if (isCancelled || !driveData) return;
-
-          console.log('[GoogleDrive] Arquivo backup_app.json encontrado no appDataFolder, restaurando...');
-
-          // 1. Restaura Lançamentos
-          if (driveData.transactions && Array.isArray(driveData.transactions)) {
-            const deletedIds = new Set(getDeletedItemIds());
-            const validDriveTxs = deduplicateTransactions(
-              driveData.transactions.filter((t: Transaction) => !deletedIds.has(t.id))
-            );
-
-            setTransactions((prevLocal) => {
-              const localMap = new Map(prevLocal.map((t) => [t.id, t]));
-              for (const t of validDriveTxs) {
-                if (!localMap.has(t.id)) {
-                  localMap.set(t.id, { ...t, synced: true, pendingSync: false });
-                }
-              }
-              const merged = deduplicateTransactions(Array.from(localMap.values()));
-              safeSetLocalStorage(PERSISTENT_STORAGE_KEYS.TRANSACTIONS, merged);
-              saveToIndexedDB(PERSISTENT_STORAGE_KEYS.TRANSACTIONS, merged).catch(() => {});
-              return merged;
-            });
-          }
-
-          // 2. Restaura Categorias
-          if (driveData.incomeCategories && Array.isArray(driveData.incomeCategories) && driveData.incomeCategories.length > 0) {
-            setIncomeCategories(driveData.incomeCategories);
-            safeSetLocalStorage(PERSISTENT_STORAGE_KEYS.INCOME_CATS, driveData.incomeCategories);
-          }
-          if (driveData.expenseCategories && Array.isArray(driveData.expenseCategories) && driveData.expenseCategories.length > 0) {
-            setExpenseCategories(driveData.expenseCategories);
-            safeSetLocalStorage(PERSISTENT_STORAGE_KEYS.EXPENSE_CATS, driveData.expenseCategories);
-          }
-
-          // 3. Restaura Orçamentos
-          if (driveData.budgets) {
-            setBudgets(driveData.budgets);
-            safeSetLocalStorage(PERSISTENT_STORAGE_KEYS.BUDGETS, driveData.budgets);
-          }
-          if (typeof driveData.defaultBudget === 'number' && driveData.defaultBudget > 0) {
-            setDefaultBudget(driveData.defaultBudget);
-            safeSetLocalStorage(PERSISTENT_STORAGE_KEYS.DEFAULT_BUDGET, driveData.defaultBudget);
-          }
-          if (driveData.monthlyIncomes) {
-            setMonthlyIncomes(driveData.monthlyIncomes);
-            safeSetLocalStorage(PERSISTENT_STORAGE_KEYS.MONTHLY_INCOMES, driveData.monthlyIncomes);
-          }
-          if (typeof driveData.defaultIncome === 'number' && driveData.defaultIncome >= 0) {
-            setDefaultIncome(driveData.defaultIncome);
-            safeSetLocalStorage(PERSISTENT_STORAGE_KEYS.DEFAULT_INCOME, driveData.defaultIncome);
-          }
-          if (driveData.categoryBudgets) {
-            setCategoryBudgets(driveData.categoryBudgets);
-            safeSetLocalStorage(PERSISTENT_STORAGE_KEYS.CATEGORY_BUDGETS, driveData.categoryBudgets);
-          }
-
-          // 4. Restaura Perfil
-          if (driveData.userProfile?.name) {
-            setUserProfile((prev) => {
-              const updated = {
-                ...prev,
-                ...driveData.userProfile,
-                name: driveData.userProfile.name || authUser.displayName || prev.name,
-                avatarUrl: driveData.userProfile.avatarUrl || authUser.photoURL || prev.avatarUrl,
-              };
-              saveStoredUserProfile(updated);
-              return updated;
-            });
-          }
-
-          // 5. Restaura Regras Recorrentes
-          if (driveData.recurringRules && Array.isArray(driveData.recurringRules)) {
-            setRecurringRules(driveData.recurringRules);
-            safeSetLocalStorage(PERSISTENT_STORAGE_KEYS.RECURRING_RULES, driveData.recurringRules);
-          }
-
-          // 6. Restaura Lixeira Local
-          if (driveData.trashTransactions && Array.isArray(driveData.trashTransactions)) {
-            setTrashTransactions(driveData.trashTransactions);
-            safeSetLocalStorage(PERSISTENT_STORAGE_KEYS.TRASH_TRANSACTIONS, driveData.trashTransactions);
-          }
-
-          setDriveSyncState('synced');
-          setLastDriveSyncTime(new Date());
-        } else {
-          // Primeiro acesso com esta conta Google: salva os dados locais atuais no Google Drive
-          console.log('[GoogleDrive] Nenhum backup_app.json encontrado no Google Drive. Criando backup inicial...');
-          await syncToGoogleDrive();
+        if (!data || typeof data !== 'object') {
+          return { success: false, message: 'Arquivo inválido ou corrompido.' };
         }
+
+        const hasTxs = Array.isArray(data.transactions);
+        const hasCats = Array.isArray(data.incomeCategories) || Array.isArray(data.expenseCategories);
+        const hasProfile = Boolean(data.userProfile);
+
+        if (!hasTxs && !hasCats && !hasProfile) {
+          return {
+            success: false,
+            message: 'O arquivo selecionado não contém uma estrutura válida de backup.',
+          };
+        }
+
+        markHasRealUserData();
+
+        if (data.incomeCategories && Array.isArray(data.incomeCategories)) {
+          setIncomeCategories(data.incomeCategories);
+          safeSetLocalStorage(PERSISTENT_STORAGE_KEYS.INCOME_CATS, data.incomeCategories);
+          saveToIndexedDB(PERSISTENT_STORAGE_KEYS.INCOME_CATS, data.incomeCategories).catch(() => {});
+        }
+
+        if (data.expenseCategories && Array.isArray(data.expenseCategories)) {
+          setExpenseCategories(data.expenseCategories);
+          safeSetLocalStorage(PERSISTENT_STORAGE_KEYS.EXPENSE_CATS, data.expenseCategories);
+          saveToIndexedDB(PERSISTENT_STORAGE_KEYS.EXPENSE_CATS, data.expenseCategories).catch(() => {});
+        }
+
+        if (data.transactions && Array.isArray(data.transactions)) {
+          setTransactions(data.transactions);
+          safeSetLocalStorage(PERSISTENT_STORAGE_KEYS.TRANSACTIONS, data.transactions);
+          saveToIndexedDB(PERSISTENT_STORAGE_KEYS.TRANSACTIONS, data.transactions).catch(() => {});
+        }
+
+        if (data.recurringRules && Array.isArray(data.recurringRules)) {
+          setRecurringRules(data.recurringRules);
+          safeSetLocalStorage(PERSISTENT_STORAGE_KEYS.RECURRING_RULES, data.recurringRules);
+          saveToIndexedDB(PERSISTENT_STORAGE_KEYS.RECURRING_RULES, data.recurringRules).catch(() => {});
+        }
+
+        if (data.budgets && typeof data.budgets === 'object') {
+          setBudgets(data.budgets);
+          safeSetLocalStorage(PERSISTENT_STORAGE_KEYS.BUDGETS, data.budgets);
+          saveToIndexedDB(PERSISTENT_STORAGE_KEYS.BUDGETS, data.budgets).catch(() => {});
+        }
+
+        if (typeof data.defaultBudget === 'number') {
+          setDefaultBudget(data.defaultBudget);
+          safeSetLocalStorage(PERSISTENT_STORAGE_KEYS.DEFAULT_BUDGET, data.defaultBudget);
+          saveToIndexedDB(PERSISTENT_STORAGE_KEYS.DEFAULT_BUDGET, data.defaultBudget).catch(() => {});
+        }
+
+        if (data.categoryBudgets && typeof data.categoryBudgets === 'object') {
+          setCategoryBudgets(data.categoryBudgets);
+          safeSetLocalStorage(PERSISTENT_STORAGE_KEYS.CATEGORY_BUDGETS, data.categoryBudgets);
+          saveToIndexedDB(PERSISTENT_STORAGE_KEYS.CATEGORY_BUDGETS, data.categoryBudgets).catch(() => {});
+        }
+
+        if (data.monthlyIncomes && typeof data.monthlyIncomes === 'object') {
+          setMonthlyIncomes(data.monthlyIncomes);
+          safeSetLocalStorage(PERSISTENT_STORAGE_KEYS.MONTHLY_INCOMES, data.monthlyIncomes);
+          saveToIndexedDB(PERSISTENT_STORAGE_KEYS.MONTHLY_INCOMES, data.monthlyIncomes).catch(() => {});
+        }
+
+        if (typeof data.defaultIncome === 'number') {
+          setDefaultIncome(data.defaultIncome);
+          safeSetLocalStorage(PERSISTENT_STORAGE_KEYS.DEFAULT_INCOME, data.defaultIncome);
+          saveToIndexedDB(PERSISTENT_STORAGE_KEYS.DEFAULT_INCOME, data.defaultIncome).catch(() => {});
+        }
+
+        if (data.trashTransactions && Array.isArray(data.trashTransactions)) {
+          setTrashTransactions(data.trashTransactions);
+          safeSetLocalStorage(PERSISTENT_STORAGE_KEYS.TRASH_TRANSACTIONS, data.trashTransactions);
+          saveToIndexedDB(PERSISTENT_STORAGE_KEYS.TRASH_TRANSACTIONS, data.trashTransactions).catch(() => {});
+        }
+
+        if (data.userProfile && typeof data.userProfile === 'object') {
+          setUserProfile(data.userProfile);
+          saveStoredUserProfile(data.userProfile);
+          safeSetLocalStorage(PERSISTENT_STORAGE_KEYS.USER_PROFILE, data.userProfile);
+          saveToIndexedDB(PERSISTENT_STORAGE_KEYS.USER_PROFILE, data.userProfile).catch(() => {});
+          window.dispatchEvent(new CustomEvent(PROFILE_UPDATE_EVENT, { detail: data.userProfile }));
+        }
+
+        if (data.security) {
+          if (data.security.pin) {
+            restorePinFromCloud(data.security.pin, data.security.pinEnabled !== false);
+          }
+          if (data.security.biometricRegistered) {
+            restoreBiometricFromCloud(data.security);
+          }
+        }
+
+        // Snapshot mestre salvo
+        saveMasterSnapshot({
+          transactions: data.transactions || transactions,
+          incomeCategories: data.incomeCategories || incomeCategories,
+          expenseCategories: data.expenseCategories || expenseCategories,
+          budgets: data.budgets || budgets,
+          defaultBudget: typeof data.defaultBudget === 'number' ? data.defaultBudget : defaultBudget,
+          categoryBudgets: data.categoryBudgets || categoryBudgets,
+          monthlyIncomes: data.monthlyIncomes || monthlyIncomes,
+          defaultIncome: typeof data.defaultIncome === 'number' ? data.defaultIncome : defaultIncome,
+          userProfile: data.userProfile || userProfile,
+          recurringRules: data.recurringRules || recurringRules,
+          savedAt: Date.now(),
+        });
+
+        const count = data.transactions?.length || 0;
+        return {
+          success: true,
+          message: `Backup restaurado com sucesso! (${count} ${
+            count === 1 ? 'lançamento' : 'lançamentos'
+          } carregados)`,
+          count,
+        };
       } catch (err: any) {
-        console.warn('[GoogleDrive] Erro na restauração inicial:', err);
-        setDriveSyncState('error');
+        return {
+          success: false,
+          message: `Falha ao importar backup: ${err?.message || 'Arquivo corrompido ou formato não suportado'}`,
+        };
       }
-    };
-
-    checkAndRestoreFromDrive();
-
-    return () => {
-      isCancelled = true;
-    };
-  }, [authUser?.uid]);
-
-  // Google Drive: Auto-Sync Contínuo em Segundo Plano (Silencioso e com Debounce)
-  useEffect(() => {
-    const token = getGoogleDriveAccessToken();
-    if (!token || !authUser) return;
-
-    const timer = setTimeout(() => {
-      syncToGoogleDrive();
-    }, 1500);
-
-    return () => clearTimeout(timer);
-  }, [
-    authUser?.uid,
-    transactions,
-    incomeCategories,
-    expenseCategories,
-    budgets,
-    defaultBudget,
-    categoryBudgets,
-    monthlyIncomes,
-    defaultIncome,
-    userProfile,
-    recurringRules,
-    trashTransactions,
-    syncToGoogleDrive,
-  ]);
-
-  // Google Drive: Reconexão e Envio Automático ao voltar a internet
-  useEffect(() => {
-    const handleDriveOnline = () => {
-      const token = getGoogleDriveAccessToken();
-      if (token && authUser) {
-        syncToGoogleDrive();
-      }
-    };
-    window.addEventListener('online', handleDriveOnline);
-    return () => window.removeEventListener('online', handleDriveOnline);
-  }, [authUser, syncToGoogleDrive]);
+    },
+    [
+      transactions,
+      incomeCategories,
+      expenseCategories,
+      budgets,
+      defaultBudget,
+      categoryBudgets,
+      monthlyIncomes,
+      defaultIncome,
+      userProfile,
+      recurringRules,
+    ]
+  );
 
   // Automatically project recurring fixed expenses to all future months (up to 24 months ahead)
   // Only runs when recurringRules changes (instantaneous and lag-free month switching)
@@ -1782,12 +1761,13 @@ export function useFinanceStorage() {
     resetAllData,
     resetToInitialData,
     restoreFromBackup,
+    exportBackup,
+    importBackup,
     authUser,
     cloudSyncState,
     lastSyncTime,
     driveSyncState,
     lastDriveSyncTime,
-    syncDriveNow: syncToGoogleDrive,
     loginWithGoogle,
     logoutUser,
     syncNow,

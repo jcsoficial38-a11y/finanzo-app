@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useRef, useState } from 'react';
 import {
   X,
   Home,
@@ -7,16 +7,15 @@ import {
   Tags,
   User,
   Sliders,
-  Cloud,
-  CheckCircle2,
-  RefreshCw,
-  LogOut,
-  WifiOff,
+  Database,
+  Download,
+  Upload,
   Shield,
   Settings,
+  Check,
+  AlertCircle,
 } from 'lucide-react';
 import { ActiveTab, UserProfile } from '../types/finance';
-import { GoogleSignInButton } from './GoogleSignInButton';
 import { useAppTheme } from '../context/ThemeContext';
 
 interface SidebarDrawerProps {
@@ -25,15 +24,11 @@ interface SidebarDrawerProps {
   activeTab: ActiveTab;
   onChangeTab: (tab: ActiveTab) => void;
   profile: UserProfile;
-  authUser: any;
-  driveSyncState: 'idle' | 'syncing' | 'synced' | 'error' | 'offline';
-  lastDriveSyncTime: Date | null;
-  onLoginGoogle: () => Promise<any> | void;
-  onLogoutGoogle: () => void;
-  onSyncDriveNow: () => Promise<boolean> | void;
   onOpenProfileModal: () => void;
   onOpenBudgetModal: () => void;
   onOpenCategoryModal: () => void;
+  onExportBackup?: () => void;
+  onImportBackup?: (file: File) => Promise<{ success: boolean; message: string; count?: number }>;
 }
 
 export const SidebarDrawer: React.FC<SidebarDrawerProps> = ({
@@ -42,23 +37,20 @@ export const SidebarDrawer: React.FC<SidebarDrawerProps> = ({
   activeTab,
   onChangeTab,
   profile,
-  authUser,
-  driveSyncState,
-  lastDriveSyncTime,
-  onLoginGoogle,
-  onLogoutGoogle,
-  onSyncDriveNow,
   onOpenProfileModal,
   onOpenBudgetModal,
   onOpenCategoryModal,
+  onExportBackup,
+  onImportBackup,
 }) => {
   const { theme } = useAppTheme();
-  const [isLoggingIn, setIsLoggingIn] = React.useState(false);
-  const [isSyncing, setIsSyncing] = React.useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [drawerFeedback, setDrawerFeedback] = useState<{ message: string; isError: boolean } | null>(null);
+  const [isImporting, setIsImporting] = useState(false);
 
-  const displayName = authUser?.displayName || profile.name || 'Meu Perfil';
-  const displayEmail = authUser?.email || profile.login || 'Modo Offline (Local)';
-  const displayAvatarUrl = authUser?.photoURL || profile.avatarUrl || '';
+  const displayName = profile.name || 'JC';
+  const displayEmail = profile.login || '@jc';
+  const displayAvatarUrl = profile.avatarUrl || '';
   const displayInitials = (displayName || 'U')
     .split(' ')
     .filter(Boolean)
@@ -69,23 +61,34 @@ export const SidebarDrawer: React.FC<SidebarDrawerProps> = ({
 
   if (!isOpen) return null;
 
-  const handleLogin = async () => {
-    setIsLoggingIn(true);
-    try {
-      await onLoginGoogle();
-    } catch (err) {
-      console.warn('[SidebarDrawer] Erro ao autenticar:', err);
-    } finally {
-      setIsLoggingIn(false);
+  const handleExport = () => {
+    if (onExportBackup) {
+      onExportBackup();
+      setDrawerFeedback({ message: 'Backup backup_app.json baixado!', isError: false });
+      setTimeout(() => setDrawerFeedback(null), 3000);
     }
   };
 
-  const handleSync = async () => {
-    setIsSyncing(true);
+  const handleImportFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setIsImporting(true);
     try {
-      await onSyncDriveNow();
+      if (onImportBackup) {
+        const res = await onImportBackup(file);
+        setDrawerFeedback({ message: res.message, isError: !res.success });
+        if (res.success) {
+          setTimeout(() => setDrawerFeedback(null), 4000);
+        }
+      }
+    } catch (err: any) {
+      setDrawerFeedback({
+        message: `Erro: ${err?.message || 'Arquivo inválido'}`,
+        isError: true,
+      });
     } finally {
-      setIsSyncing(false);
+      setIsImporting(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
     }
   };
 
@@ -132,9 +135,8 @@ export const SidebarDrawer: React.FC<SidebarDrawerProps> = ({
             </button>
           </div>
 
-          {/* CABEÇALHO DO PERFIL & GOOGLE DRIVE INTEGRADO */}
+          {/* CABEÇALHO DO PERFIL (100% OFFLINE / LOCAL) */}
           <div className="bg-slate-50/90 rounded-2xl border border-slate-200/80 p-3.5 space-y-3 shadow-2xs">
-            {/* Top User Info Row */}
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3 min-w-0">
                 {/* Avatar Circular */}
@@ -157,31 +159,17 @@ export const SidebarDrawer: React.FC<SidebarDrawerProps> = ({
                       </span>
                     )}
                   </div>
-                  {authUser && (
-                    <span
-                      title="Conectado ao Google Drive"
-                      className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 bg-emerald-500 border-2 border-white rounded-full flex items-center justify-center shadow-2xs"
-                    >
-                      <Cloud className="w-2 h-2 text-white" />
-                    </span>
-                  )}
                 </div>
 
-                {/* Name & Login / Email */}
+                {/* Name & Login */}
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-1.5">
                     <p className="text-xs font-bold text-slate-900 truncate leading-tight">
                       {displayName}
                     </p>
-                    {authUser ? (
-                      <span className="px-1.5 py-0.2 text-[9px] font-bold rounded-md bg-emerald-100 text-emerald-800 border border-emerald-200/80 shrink-0">
-                        Drive Ativo
-                      </span>
-                    ) : (
-                      <span className="px-1.5 py-0.2 text-[9px] font-bold rounded-md bg-slate-200 text-slate-700 shrink-0">
-                        Offline
-                      </span>
-                    )}
+                    <span className="px-1.5 py-0.2 text-[9px] font-bold rounded-md bg-emerald-100 text-emerald-800 border border-emerald-200/80 shrink-0">
+                      Offline
+                    </span>
                   </div>
                   <p className="text-[10px] text-slate-500 truncate mt-0.5">
                     {displayEmail}
@@ -196,93 +184,82 @@ export const SidebarDrawer: React.FC<SidebarDrawerProps> = ({
                   onClose();
                   onOpenProfileModal();
                 }}
-                title="Editar dados do perfil"
+                title="Configurações & Perfil"
                 className="p-1.5 rounded-xl hover:bg-slate-200/70 text-slate-500 hover:text-slate-800 transition-colors cursor-pointer"
               >
                 <Settings className="w-4 h-4" />
               </button>
             </div>
+          </div>
 
-            {/* SEÇÃO GOOGLE DRIVE: AUTENTICADO OU OFFLINE */}
-            {authUser ? (
-              <div className="pt-2.5 border-t border-slate-200/70 space-y-2.5">
-                {/* Status da Sincronização */}
-                <div className="flex items-center justify-between text-[11px] px-2.5 py-1.5 bg-white rounded-xl border border-slate-200/60 shadow-2xs">
-                  <span className="flex items-center gap-1.5">
-                    {driveSyncState === 'syncing' || isSyncing ? (
-                      <>
-                        <RefreshCw className="w-3.5 h-3.5 text-teal-600 animate-spin shrink-0" />
-                        <span className="text-teal-700 font-semibold text-[10px]">
-                          Salvando no Drive...
-                        </span>
-                      </>
-                    ) : driveSyncState === 'offline' ? (
-                      <>
-                        <WifiOff className="w-3.5 h-3.5 text-amber-600 shrink-0" />
-                        <span className="text-amber-700 font-medium text-[10px]">
-                          Offline (salvo no aparelho)
-                        </span>
-                      </>
-                    ) : (
-                      <>
-                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-                        <span className="text-emerald-700 font-medium text-[10px]">
-                          Backup Sincronizado
-                        </span>
-                      </>
-                    )}
-                  </span>
-
-                  {lastDriveSyncTime && (
-                    <span className="text-[9px] text-slate-400 font-medium shrink-0">
-                      {lastDriveSyncTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                    </span>
-                  )}
+          {/* CARD DE BACKUP & DADOS LOCAIS */}
+          <div className="bg-white rounded-2xl border border-slate-200/80 p-3.5 space-y-3 shadow-2xs">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <div className="w-7 h-7 rounded-lg bg-teal-600 text-white flex items-center justify-center shadow-2xs shrink-0">
+                  <Database className="w-4 h-4 text-white" />
                 </div>
-
-                {/* Ações Rápidas: Sincronizar e Sair */}
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={handleSync}
-                    disabled={isSyncing}
-                    className="flex-1 py-1.5 px-2.5 bg-white hover:bg-slate-100 border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 flex items-center justify-center gap-1.5 transition-colors cursor-pointer shadow-2xs disabled:opacity-60"
-                  >
-                    <RefreshCw className={`w-3.5 h-3.5 text-teal-600 ${isSyncing ? 'animate-spin' : ''}`} />
-                    <span>Sincronizar</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={onLogoutGoogle}
-                    className="py-1.5 px-2.5 bg-white hover:bg-rose-50 border border-slate-200 hover:border-rose-200 text-rose-600 rounded-xl text-xs font-semibold flex items-center justify-center gap-1 transition-colors cursor-pointer shadow-2xs"
-                    title="Desconectar do Google Drive"
-                  >
-                    <LogOut className="w-3.5 h-3.5" />
-                    <span>Sair</span>
-                  </button>
-                </div>
-              </div>
-            ) : (
-              <div className="pt-2.5 border-t border-slate-200/70 space-y-2">
-                <div className="flex items-start gap-2">
-                  <Cloud className="w-3.5 h-3.5 text-teal-600 shrink-0 mt-0.5" />
-                  <p className="text-[10px] text-slate-600 leading-snug">
-                    Conecte sua conta Google para salvar seus lançamentos em segundo plano na nuvem do Google Drive.
+                <div>
+                  <h3 className="text-xs font-bold text-slate-900">
+                    Backup & Dados Locais
+                  </h3>
+                  <p className="text-[10px] text-slate-400">
+                    Armazenamento interno seguro
                   </p>
                 </div>
+              </div>
+            </div>
 
-                <GoogleSignInButton
-                  onClick={handleLogin}
-                  isLoading={isLoggingIn}
-                  className="w-full py-2 shadow-2xs text-xs"
-                />
+            {/* Input oculto para importação */}
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".json,application/json"
+              className="hidden"
+              onChange={handleImportFile}
+            />
 
-                <p className="text-[9px] text-slate-400 text-center">
-                  100% offline disponível • Seus dados continuam no seu aparelho
-                </p>
+            {/* Feedback inline */}
+            {drawerFeedback && (
+              <div
+                className={`p-2 rounded-xl text-[10px] font-medium border flex items-center gap-1.5 animate-in fade-in ${
+                  drawerFeedback.isError
+                    ? 'bg-rose-50 text-rose-700 border-rose-200'
+                    : 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                }`}
+              >
+                {drawerFeedback.isError ? (
+                  <AlertCircle className="w-3.5 h-3.5 text-rose-600 shrink-0" />
+                ) : (
+                  <Check className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                )}
+                <span>{drawerFeedback.message}</span>
               </div>
             )}
+
+            {/* Botões Exportar e Importar */}
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={handleExport}
+                className="py-2 px-2.5 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 flex items-center justify-center gap-1.5 transition-colors cursor-pointer shadow-2xs"
+                title="Baixar backup_app.json"
+              >
+                <Download className="w-3.5 h-3.5 text-teal-600 shrink-0" />
+                <span>Exportar</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={isImporting}
+                className="py-2 px-2.5 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 flex items-center justify-center gap-1.5 transition-colors cursor-pointer shadow-2xs disabled:opacity-60"
+                title="Restaurar backup_app.json"
+              >
+                <Upload className="w-3.5 h-3.5 text-sky-600 shrink-0" />
+                <span>{isImporting ? 'Lendo...' : 'Importar'}</span>
+              </button>
+            </div>
           </div>
 
           {/* NAVIGATION LINKS */}
@@ -382,7 +359,7 @@ export const SidebarDrawer: React.FC<SidebarDrawerProps> = ({
             <span>Finanzo v2.0 • Offline-First</span>
             <span className="flex items-center gap-1 text-emerald-600 font-medium">
               <Shield className="w-3 h-3" />
-              Seguro
+              100% Local
             </span>
           </div>
         </div>

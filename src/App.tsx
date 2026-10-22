@@ -69,11 +69,10 @@ export default function App() {
     emptyTrash,
     deletePermanentlyFromTrash,
     restoreFromBackup,
+    exportBackup,
+    importBackup,
     authUser,
     cloudSyncState,
-    driveSyncState,
-    lastDriveSyncTime,
-    syncDriveNow,
     loginWithGoogle,
     logoutUser,
     syncNow,
@@ -158,8 +157,6 @@ export default function App() {
           onOpenBudgetModal={() => setIsBudgetModalOpen(true)}
           onOpenProfileModal={() => setIsProfileModalOpen(true)}
           onOpenMenu={() => setIsSidebarOpen(true)}
-          isCloudConnected={!!authUser}
-          isDriveConnected={!!authUser && driveSyncState !== 'error'}
         />
 
         {/* Main Content Area */}
@@ -382,6 +379,8 @@ export default function App() {
         currentBudget={currentMonthBudget}
         onUpdateProfile={updateUserProfile}
         onExportCSV={handleExportCSV}
+        onExportBackup={exportBackup}
+        onImportBackup={importBackup}
         onClearTransactions={clearAllTransactions}
         onResetAllData={resetAllData}
         trashTransactions={trashTransactions}
@@ -423,12 +422,8 @@ export default function App() {
         activeTab={activeTab}
         onChangeTab={setActiveTab}
         profile={userProfile}
-        authUser={authUser}
-        driveSyncState={driveSyncState}
-        lastDriveSyncTime={lastDriveSyncTime}
-        onLoginGoogle={loginWithGoogle}
-        onLogoutGoogle={logoutUser}
-        onSyncDriveNow={syncDriveNow}
+        onExportBackup={exportBackup}
+        onImportBackup={importBackup}
         onOpenProfileModal={() => setIsProfileModalOpen(true)}
         onOpenBudgetModal={() => setIsBudgetModalOpen(true)}
         onOpenCategoryModal={() => setIsCategoryModalOpen(true)}

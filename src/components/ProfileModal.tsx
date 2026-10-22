@@ -25,6 +25,8 @@ import {
   Sliders,
   ChevronRight,
   ChevronDown,
+  Database,
+  Download,
   Sparkles,
   Info,
 } from 'lucide-react';
@@ -64,6 +66,8 @@ interface ProfileModalProps {
   currentBudget: number;
   onUpdateProfile: (updates: Partial<UserProfile>) => void;
   onExportCSV?: () => void;
+  onExportBackup?: () => void;
+  onImportBackup?: (file: File) => Promise<{ success: boolean; message: string; count?: number }>;
   onPinChange?: () => void;
   onClearTransactions?: () => void | Promise<void>;
   onResetAllData?: () => void | Promise<void>;
@@ -89,6 +93,8 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
   currentBudget,
   onUpdateProfile,
   onExportCSV,
+  onExportBackup,
+  onImportBackup,
   onPinChange,
   onClearTransactions,
   onResetAllData,
@@ -110,8 +116,9 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
   const [avatarUrl, setAvatarUrl] = useState(profile.avatarUrl || '');
   const [avatarColor, setAvatarColor] = useState(profile.avatarColor || '#7dd3fc');
   const [savedSuccess, setSavedSuccess] = useState(false);
-  const [isLoggingIn, setIsLoggingIn] = useState(false);
-  const [googleLoginError, setGoogleLoginError] = useState<string | null>(null);
+  const [backupFeedback, setBackupFeedback] = useState<{ message: string; isError: boolean } | null>(null);
+  const [isImporting, setIsImporting] = useState(false);
+  const backupFileInputRef = useRef<HTMLInputElement>(null);
 
   const { themeId, setTheme } = useAppTheme();
   const { formatMoney } = useCurrencyVisibility();
@@ -163,37 +170,41 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
 
   if (!isOpen) return null;
 
-  // Função oficial de Login Google 1-Clique sem travamento
-  const handleLoginGoogleClick = async () => {
-    setGoogleLoginError(null);
-    setIsLoggingIn(true);
+  // Exportar Backup Local Instantâneo (backup_app.json)
+  const handleExportBackupClick = () => {
+    if (onExportBackup) {
+      onExportBackup();
+      setBackupFeedback({
+        message: 'Arquivo backup_app.json gerado e baixado com sucesso!',
+        isError: false,
+      });
+      setTimeout(() => setBackupFeedback(null), 4000);
+    }
+  };
+
+  // Importar Backup Local Instantâneo (Restaura backup_app.json em 1 segundo)
+  const handleImportFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setIsImporting(true);
     try {
-      if (onLoginGoogle) {
-        await onLoginGoogle();
+      if (onImportBackup) {
+        const res = await onImportBackup(file);
+        setBackupFeedback({ message: res.message, isError: !res.success });
+        if (res.success) {
+          setTimeout(() => setBackupFeedback(null), 5000);
+        }
       }
     } catch (err: any) {
-      console.warn('[ProfileModal] Aviso/Erro seguro no login Google:', err);
-      const code = err?.code || '';
-      const rawMessage = (err?.message || '').toLowerCase();
-      let msg = 'Não foi possível conectar com o Google no momento. Tente novamente.';
-      if (err?.friendlyMessage) {
-        msg = err.friendlyMessage;
-      } else if (code === 'auth/network-request-failed') {
-        msg = 'Falha de conexão com a internet. Verifique sua rede e tente novamente.';
-      } else if (code === 'auth/popup-blocked') {
-        msg = 'O pop-up de login foi bloqueado pelo seu navegador.';
-      } else if (code === 'auth/popup-closed-by-user') {
-        msg = 'A janela do Google foi fechada antes de concluir o login.';
-      } else if (code === 'auth/cancelled-popup-request') {
-        msg = 'Operação de login cancelada. Tente novamente.';
-      } else if (code === 'auth/argument-error' || rawMessage.includes('argument-error') || rawMessage.includes('auth/')) {
-        msg = 'Não foi possível autenticar com o Google. Por favor, tente novamente em alguns instantes.';
-      } else if (err?.message && !err.message.includes('auth/')) {
-        msg = err.message;
-      }
-      setGoogleLoginError(msg);
+      setBackupFeedback({
+        message: `Erro ao importar: ${err?.message || 'Arquivo inválido'}`,
+        isError: true,
+      });
     } finally {
-      setIsLoggingIn(false);
+      setIsImporting(false);
+      if (backupFileInputRef.current) {
+        backupFileInputRef.current.value = '';
+      }
     }
   };
 
@@ -909,97 +920,115 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
             </div>
           </div>
 
-          {/* SEÇÃO 4: CONEXÃO E SINCRONIZAÇÃO VIA GOOGLE DRIVE API (appDataFolder) */}
-          <div className="bg-sky-50/70 rounded-2xl border border-sky-200/80 p-4 space-y-3">
+          {/* SEÇÃO 4: BACKUP & DADOS LOCAIS */}
+          <div className="bg-slate-50/90 rounded-2xl border border-slate-200/80 p-4 space-y-3.5 shadow-2xs">
             <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <div className="w-7 h-7 rounded-xl bg-sky-600 text-white flex items-center justify-center shadow-2xs shrink-0">
-                  <Cloud className="w-3.5 h-3.5 text-white" />
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-xl bg-teal-600 text-white flex items-center justify-center shadow-2xs shrink-0">
+                  <Database className="w-4 h-4 text-white" />
                 </div>
                 <div>
-                  <h4 className="text-xs font-bold text-sky-950 flex items-center gap-1.5">
-                    <span>Google Drive (appDataFolder)</span>
-                    <span
-                      className={`px-1.5 py-0.5 text-[9px] font-bold rounded-md ${
-                        authUser
-                          ? 'bg-emerald-100 text-emerald-800'
-                          : 'bg-slate-200 text-slate-700'
-                      }`}
-                    >
-                      {authUser ? 'Conectado' : 'Desconectado'}
+                  <h4 className="text-xs font-bold text-slate-900 flex items-center gap-1.5">
+                    <span>Backup & Dados Locais</span>
+                    <span className="px-1.5 py-0.2 text-[9px] font-bold rounded-md bg-teal-100 text-teal-800 border border-teal-200/70">
+                      100% Offline
                     </span>
                   </h4>
-                  <p className="text-[11px] text-sky-700">
-                    {authUser
-                      ? `Conectado como ${authUser.displayName || authUser.email}`
-                      : 'Salvamento automático de backup_app.json'}
+                  <p className="text-[11px] text-slate-500">
+                    Armazenamento interno seguro no seu celular
                   </p>
                 </div>
               </div>
             </div>
 
-            {authUser ? (
-              <div className="space-y-2.5 pt-1 border-t border-sky-200/60">
-                <div className="flex items-center justify-between text-[11px] text-slate-600 bg-white/90 p-2.5 rounded-xl border border-sky-100">
-                  <span className="flex items-center gap-1.5 font-medium">
-                    <ShieldCheck className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-                    <span>Backup Automático:</span>
-                  </span>
-                  <span className="font-semibold text-emerald-700 flex items-center gap-1">
-                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                    <span>
-                      {cloudSyncState === 'syncing' ? 'Salvando...' : 'Google Drive Ativo'}
-                    </span>
-                  </span>
-                </div>
+            {/* Input oculto para carregar arquivo de backup .json */}
+            <input
+              ref={backupFileInputRef}
+              type="file"
+              accept=".json,application/json"
+              className="hidden"
+              onChange={handleImportFileSelect}
+            />
 
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={onSyncNow}
-                    disabled={cloudSyncState === 'syncing'}
-                    className="flex-1 py-2 px-3 bg-white hover:bg-sky-100/70 active:bg-sky-100 border border-sky-200 text-sky-800 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-colors shadow-2xs cursor-pointer"
-                  >
-                    <RefreshCw
-                      className={`w-3.5 h-3.5 text-sky-600 ${
-                        cloudSyncState === 'syncing' ? 'animate-spin' : ''
-                      }`}
-                    />
-                    <span>
-                      {cloudSyncState === 'syncing' ? 'Sincronizando...' : 'Sincronizar Agora'}
-                    </span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={onLogoutGoogle}
-                    className="py-2 px-3 bg-white hover:bg-rose-50 border border-slate-200 hover:border-rose-200 text-rose-600 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-colors shadow-2xs cursor-pointer"
-                  >
-                    <LogOut className="w-3.5 h-3.5" />
-                    <span>Desconectar</span>
-                  </button>
-                </div>
-              </div>
-            ) : (
-              <div className="space-y-2.5 pt-1 border-t border-sky-200/60">
-                <p className="text-[11px] text-sky-900 leading-relaxed">
-                  Conecte sua conta do Google para manter seus lançamentos, despesas e dados de perfil salvos automaticamente no seu próprio Google Drive.
-                </p>
-
-                <GoogleSignInButton
-                  onClick={handleLoginGoogleClick}
-                  isLoading={isLoggingIn}
-                  className="w-full"
-                />
-
-                {googleLoginError && (
-                  <div className="p-2.5 bg-amber-50 text-amber-900 rounded-xl text-xs font-medium border border-amber-200 flex items-start gap-2">
-                    <AlertCircle className="w-3.5 h-3.5 text-amber-600 shrink-0 mt-0.5" />
-                    <p className="text-[11px]">{googleLoginError}</p>
-                  </div>
+            {/* Feedback de sucesso ou erro no backup */}
+            {backupFeedback && (
+              <div
+                className={`p-3 rounded-xl text-xs font-medium border flex items-center gap-2 animate-in fade-in duration-150 ${
+                  backupFeedback.isError
+                    ? 'bg-rose-50 text-rose-700 border-rose-200'
+                    : 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                }`}
+              >
+                {backupFeedback.isError ? (
+                  <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+                ) : (
+                  <Check className="w-4 h-4 text-emerald-600 shrink-0" />
                 )}
+                <span className="text-[11px] leading-snug">{backupFeedback.message}</span>
               </div>
             )}
+
+            {/* Grid dos Botões Exportar e Importar Backup */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-1">
+              {/* a) BOTÃO EXPORTAR BACKUP */}
+              <button
+                type="button"
+                onClick={handleExportBackupClick}
+                className="p-3 bg-white hover:bg-slate-50 active:bg-slate-100 border border-slate-200/90 rounded-xl text-left transition-all shadow-2xs cursor-pointer group flex flex-col justify-between gap-2.5"
+              >
+                <div className="flex items-center justify-between">
+                  <div className="w-8 h-8 rounded-lg bg-teal-50 text-teal-700 flex items-center justify-center group-hover:scale-105 transition-transform">
+                    <Download className="w-4 h-4 text-teal-600" />
+                  </div>
+                  <span className="text-[10px] font-bold text-teal-700 bg-teal-50 px-2 py-0.5 rounded-md border border-teal-100">
+                    backup_app.json
+                  </span>
+                </div>
+                <div>
+                  <p className="text-xs font-bold text-slate-800">Exportar Backup</p>
+                  <p className="text-[10px] text-slate-500 leading-snug mt-0.5">
+                    Baixa o arquivo com todos os lançamentos, despesas, categorias, nome e foto.
+                  </p>
+                </div>
+              </button>
+
+              {/* b) BOTÃO IMPORTAR BACKUP */}
+              <button
+                type="button"
+                onClick={() => backupFileInputRef.current?.click()}
+                disabled={isImporting}
+                className="p-3 bg-white hover:bg-slate-50 active:bg-slate-100 border border-slate-200/90 rounded-xl text-left transition-all shadow-2xs cursor-pointer group flex flex-col justify-between gap-2.5 disabled:opacity-60"
+              >
+                <div className="flex items-center justify-between">
+                  <div className="w-8 h-8 rounded-lg bg-sky-50 text-sky-700 flex items-center justify-center group-hover:scale-105 transition-transform">
+                    <Upload className="w-4 h-4 text-sky-600" />
+                  </div>
+                  <span className="text-[10px] font-bold text-sky-700 bg-sky-50 px-2 py-0.5 rounded-md border border-sky-100">
+                    {isImporting ? 'Lendo...' : 'Restaurar'}
+                  </span>
+                </div>
+                <div>
+                  <p className="text-xs font-bold text-slate-800">
+                    {isImporting ? 'Restaurando...' : 'Importar Backup'}
+                  </p>
+                  <p className="text-[10px] text-slate-500 leading-snug mt-0.5">
+                    Selecione seu backup_app.json para restaurar o aplicativo em 1 segundo.
+                  </p>
+                </div>
+              </button>
+            </div>
+
+            {/* c) BOTÃO ZERAR/RESETAR DADOS */}
+            <div className="pt-1 border-t border-slate-200/60">
+              <button
+                type="button"
+                onClick={() => setShowResetAllConfirmModal(true)}
+                className="w-full py-2.5 px-3 bg-white hover:bg-rose-50 border border-rose-200/80 hover:border-rose-300 text-rose-700 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-colors cursor-pointer shadow-2xs"
+              >
+                <RotateCcw className="w-3.5 h-3.5 text-rose-600" />
+                <span>Zerar / Resetar Dados (Começar do Zero)</span>
+              </button>
+            </div>
           </div>
 
           {/* SEÇÃO 5: LIXEIRA LOCAL (ARMAZENAMENTO INTERNO - PADRÃO ACCORDION / RETRÁTIL) */}
