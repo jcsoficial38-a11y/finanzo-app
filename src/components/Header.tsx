@@ -6,23 +6,21 @@ import {
   Eye,
   EyeOff,
   Menu,
-  Cloud,
 } from 'lucide-react';
 import { formatMonthYearLabel, getCurrentMonthKey } from '../utils/dateUtils';
 import { MonthSelectorModal } from './MonthSelectorModal';
 import { UserProfile } from '../types/finance';
 import { useCurrencyVisibility } from '../context/CurrencyVisibilityContext';
 import { useAppTheme } from '../context/ThemeContext';
-import { useUserProfile } from '../hooks/useUserProfile';
 
 interface HeaderProps {
   currentMonthKey: string;
-  profile: UserProfile;
+  profile?: UserProfile;
   onPrevMonth: () => void;
   onNextMonth: () => void;
   onSelectMonth: (monthKey: string) => void;
   onOpenBudgetModal?: () => void;
-  onOpenProfileModal: () => void;
+  onOpenProfileModal?: () => void;
   onResetData?: () => void;
   isCloudConnected?: boolean;
   onOpenMenu?: () => void;
@@ -31,28 +29,14 @@ interface HeaderProps {
 
 export const Header: React.FC<HeaderProps> = ({
   currentMonthKey,
-  profile,
   onPrevMonth,
   onNextMonth,
   onSelectMonth,
-  onOpenBudgetModal,
-  onOpenProfileModal,
-  isCloudConnected,
   onOpenMenu,
-  isDriveConnected,
 }) => {
   const { hideValues, toggleHideValues } = useCurrencyVisibility();
   const { theme } = useAppTheme();
   const [isMonthModalOpen, setIsMonthModalOpen] = useState(false);
-
-  // Centralized hook reading directly from localStorage and reactive to any updates
-  const {
-    name,
-    initials,
-    avatarUrl,
-    avatarColor,
-    login,
-  } = useUserProfile(profile);
 
   const formattedMonth = formatMonthYearLabel(currentMonthKey);
   const isActualMonth = currentMonthKey === getCurrentMonthKey();
@@ -60,10 +44,10 @@ export const Header: React.FC<HeaderProps> = ({
   return (
     <>
       <header className="sticky top-0 z-30 bg-white/95 backdrop-blur-md border-b border-slate-100/80 px-4 pt-safe pb-2">
-        {/* Top Brand & Profile row */}
+        {/* Top Brand & Action row */}
         <div className="flex items-center justify-between h-11 gap-2">
-          {/* Brand Left with Retractable Menu Button */}
-          <div className="flex items-center gap-1.5 min-w-0">
+          {/* Brand Left with Retractable Menu Button (três listras) */}
+          <div className="flex items-center gap-2 min-w-0">
             {onOpenMenu && (
               <button
                 type="button"
@@ -88,15 +72,14 @@ export const Header: React.FC<HeaderProps> = ({
             </div>
           </div>
 
-          {/* Action Tools & User Profile Right */}
+          {/* Action Tools Right (Toggle Hide/Show Values Button) */}
           <div className="flex items-center gap-1.5 shrink-0">
-            {/* Toggle Hide/Show Values Button */}
             <button
               type="button"
               onClick={toggleHideValues}
               title={hideValues ? 'Exibir valores monetários' : 'Ocultar valores monetários (R$ •••••)'}
               aria-label={hideValues ? 'Exibir valores monetários' : 'Ocultar valores monetários'}
-              className={`h-8 px-2.5 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-all active:scale-95 ${
+              className={`h-8 px-2.5 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-all active:scale-95 cursor-pointer ${
                 hideValues
                   ? 'bg-amber-100 text-amber-900 border border-amber-300 shadow-2xs'
                   : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100 border border-slate-200/80 bg-white'
@@ -105,54 +88,14 @@ export const Header: React.FC<HeaderProps> = ({
               {hideValues ? (
                 <>
                   <EyeOff className="w-3.5 h-3.5 text-amber-700 shrink-0" />
-                  <span className="hidden sm:inline">Oculto</span>
+                  <span className="hidden xs:inline">Oculto</span>
                 </>
               ) : (
                 <>
                   <Eye className="w-3.5 h-3.5 text-slate-500 shrink-0" />
-                  <span className="hidden sm:inline">Valores</span>
+                  <span className="hidden xs:inline">Valores</span>
                 </>
               )}
-            </button>
-
-            {/* Profile Avatar & Name Trigger Button */}
-            <button
-              type="button"
-              onClick={onOpenProfileModal}
-              title={`Perfil: ${name} (${login}) • Armazenamento Local`}
-              aria-label={`Abrir perfil de ${name}`}
-              className="flex items-center gap-1.5 p-1 rounded-2xl hover:bg-slate-100/90 active:bg-slate-200/70 border border-slate-200/80 transition-all shadow-2xs active:scale-95 cursor-pointer bg-white group"
-            >
-              <div className="relative shrink-0">
-                <div
-                  className="w-8 h-8 rounded-full flex items-center justify-center overflow-hidden border border-slate-200 shadow-2xs"
-                  style={{
-                    backgroundColor: avatarUrl ? 'transparent' : (avatarColor || '#7dd3fc'),
-                  }}
-                >
-                  {avatarUrl ? (
-                    <img
-                      src={avatarUrl}
-                      alt={name}
-                      className="w-full h-full object-cover"
-                    />
-                  ) : (
-                    <span className="text-[11px] font-bold text-slate-800 tracking-tight">
-                      {initials}
-                    </span>
-                  )}
-                </div>
-              </div>
-
-              {/* Real user name in the main header */}
-              <div className="hidden xs:flex flex-col text-left pr-1 leading-tight max-w-[85px] sm:max-w-[120px]">
-                <span className="text-[11px] font-bold text-slate-800 truncate">
-                  {name}
-                </span>
-                <span className="text-[9px] text-slate-400 truncate">
-                  {login}
-                </span>
-              </div>
             </button>
           </div>
         </div>
