@@ -29,6 +29,7 @@ interface SidebarDrawerProps {
   onOpenCategoryModal: () => void;
   onExportBackup?: () => void;
   onImportBackup?: (file: File) => Promise<{ success: boolean; message: string; count?: number }>;
+  onQuickSave?: () => void;
 }
 
 export const SidebarDrawer: React.FC<SidebarDrawerProps> = ({
@@ -42,27 +43,32 @@ export const SidebarDrawer: React.FC<SidebarDrawerProps> = ({
   onOpenCategoryModal,
   onExportBackup,
   onImportBackup,
+  onQuickSave,
 }) => {
   const { theme } = useAppTheme();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [drawerFeedback, setDrawerFeedback] = useState<{ message: string; isError: boolean } | null>(null);
   const [isImporting, setIsImporting] = useState(false);
 
-  const displayName = profile.name || 'JC';
-  const displayEmail = profile.login || '@jc';
+  const displayName = profile.name?.trim() || 'Meu Perfil';
+  const displayEmail = profile.login?.trim() || 'Modo Offline (Local)';
   const displayAvatarUrl = profile.avatarUrl || '';
-  const displayInitials = (displayName || 'U')
+  const displayInitials = (profile.name?.trim() || 'FP')
     .split(' ')
     .filter(Boolean)
     .slice(0, 2)
     .map((s: string) => s[0])
     .join('')
-    .toUpperCase() || 'U';
+    .toUpperCase() || 'FP';
 
   if (!isOpen) return null;
 
   const handleExport = () => {
-    if (onExportBackup) {
+    if (onQuickSave) {
+      onQuickSave();
+      setDrawerFeedback({ message: 'Backup backup_app.json baixado!', isError: false });
+      setTimeout(() => setDrawerFeedback(null), 3000);
+    } else if (onExportBackup) {
       onExportBackup();
       setDrawerFeedback({ message: 'Backup backup_app.json baixado!', isError: false });
       setTimeout(() => setDrawerFeedback(null), 3000);

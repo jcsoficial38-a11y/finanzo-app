@@ -110,8 +110,8 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
   onEmptyTrash,
   onDeletePermanentlyFromTrash,
 }) => {
-  const [name, setName] = useState(profile.name || 'JC');
-  const [login, setLogin] = useState(profile.login || '@jc');
+  const [name, setName] = useState(profile.name || '');
+  const [login, setLogin] = useState(profile.login || '');
   const [bio, setBio] = useState(profile.bio || '');
   const [avatarUrl, setAvatarUrl] = useState(profile.avatarUrl || '');
   const [avatarColor, setAvatarColor] = useState(profile.avatarColor || '#7dd3fc');
@@ -133,8 +133,8 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
   // Keep modal fields updated whenever profile changes or modal opens
   React.useEffect(() => {
     if (isOpen) {
-      setName(profile.name || 'JC');
-      setLogin(profile.login || '@jc');
+      setName(profile.name || '');
+      setLogin(profile.login || '');
       setBio(profile.bio || '');
       setAvatarUrl(profile.avatarUrl || '');
       setAvatarColor(profile.avatarColor || '#7dd3fc');
@@ -386,8 +386,6 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!name.trim()) return;
-
     const updated: UserProfile = {
       ...profile,
       name: name.trim(),

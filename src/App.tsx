@@ -34,7 +34,7 @@ import { ActiveTab } from './types/finance';
 import { formatCurrency } from './utils/formatters';
 import { exportMonthToCSV } from './utils/csvExport';
 import { CurrencyVisibilityProvider } from './context/CurrencyVisibilityContext';
-import { ArrowRight, PieChart, Sparkles, UserCheck, Calendar, Layers, Cloud } from 'lucide-react';
+import { ArrowRight, PieChart, Sparkles, UserCheck, Calendar, Layers, Cloud, X } from 'lucide-react';
 
 export default function App() {
   const {
@@ -85,6 +85,17 @@ export default function App() {
   const [isBudgetModalOpen, setIsBudgetModalOpen] = useState(false);
   const [isCategoryModalOpen, setIsCategoryModalOpen] = useState(false);
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const toastTimerRef = React.useRef<NodeJS.Timeout | null>(null);
+
+  const handleQuickSave = () => {
+    exportBackup();
+    setToastMessage('Dados salvos com sucesso no seu celular!');
+    if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+    toastTimerRef.current = setTimeout(() => {
+      setToastMessage(null);
+    }, 3500);
+  };
 
   // 4-Digit PIN & Biometric Lock State:
   // Ao abrir o aplicativo, verifica se há senha PIN ou biometria ativa.
@@ -157,6 +168,7 @@ export default function App() {
           onOpenBudgetModal={() => setIsBudgetModalOpen(true)}
           onOpenProfileModal={() => setIsProfileModalOpen(true)}
           onOpenMenu={() => setIsSidebarOpen(true)}
+          onQuickSave={handleQuickSave}
         />
 
         {/* Main Content Area */}
@@ -424,10 +436,36 @@ export default function App() {
         profile={userProfile}
         onExportBackup={exportBackup}
         onImportBackup={importBackup}
+        onQuickSave={handleQuickSave}
         onOpenProfileModal={() => setIsProfileModalOpen(true)}
         onOpenBudgetModal={() => setIsBudgetModalOpen(true)}
         onOpenCategoryModal={() => setIsCategoryModalOpen(true)}
       />
+
+      {/* Floating Toast Notification: Dados salvos com sucesso no seu celular! */}
+      {toastMessage && (
+        <aside
+          role="status"
+          aria-live="polite"
+          className="fixed top-4 left-1/2 -translate-x-1/2 z-50 max-w-sm w-[90%] bg-emerald-600 text-white px-4 py-3 rounded-2xl shadow-xl flex items-center gap-3 border border-emerald-500 animate-in fade-in slide-in-from-top duration-300 pointer-events-auto"
+        >
+          <div className="w-8 h-8 rounded-xl bg-white/20 flex items-center justify-center shrink-0">
+            <span className="text-base">💾</span>
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-xs font-bold leading-snug">{toastMessage}</p>
+            <p className="text-[10px] text-emerald-100">Backup backup_app.json baixado</p>
+          </div>
+          <button
+            type="button"
+            onClick={() => setToastMessage(null)}
+            className="p-1 rounded-lg hover:bg-white/20 text-emerald-100 hover:text-white transition-colors cursor-pointer"
+            aria-label="Fechar notificação"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </aside>
+      )}
 
       </div>
   </CurrencyVisibilityProvider>

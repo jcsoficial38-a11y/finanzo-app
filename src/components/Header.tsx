@@ -25,6 +25,7 @@ interface HeaderProps {
   isCloudConnected?: boolean;
   onOpenMenu?: () => void;
   isDriveConnected?: boolean;
+  onQuickSave?: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -33,6 +34,7 @@ export const Header: React.FC<HeaderProps> = ({
   onNextMonth,
   onSelectMonth,
   onOpenMenu,
+  onQuickSave,
 }) => {
   const { hideValues, toggleHideValues } = useCurrencyVisibility();
   const { theme } = useAppTheme();
@@ -72,8 +74,22 @@ export const Header: React.FC<HeaderProps> = ({
             </div>
           </div>
 
-          {/* Action Tools Right (Toggle Hide/Show Values Button) */}
+          {/* Action Tools Right (Botão Rápido Salvar Dados + Ocultar Valores) */}
           <div className="flex items-center gap-1.5 shrink-0">
+            {onQuickSave && (
+              <button
+                type="button"
+                onClick={onQuickSave}
+                title="Salvar dados e baixar backup atualizado (.json) no celular"
+                aria-label="Salvar Dados"
+                className="h-8 px-2.5 rounded-xl text-xs font-bold flex items-center gap-1.5 bg-teal-600 hover:bg-teal-700 active:bg-teal-800 text-white shadow-2xs transition-all active:scale-95 cursor-pointer"
+              >
+                <span className="text-xs">💾</span>
+                <span className="hidden xs:inline">Salvar Dados</span>
+                <span className="xs:hidden">Salvar</span>
+              </button>
+            )}
+
             <button
               type="button"
               onClick={toggleHideValues}
@@ -88,12 +104,12 @@ export const Header: React.FC<HeaderProps> = ({
               {hideValues ? (
                 <>
                   <EyeOff className="w-3.5 h-3.5 text-amber-700 shrink-0" />
-                  <span className="hidden xs:inline">Oculto</span>
+                  <span className="hidden sm:inline">Oculto</span>
                 </>
               ) : (
                 <>
                   <Eye className="w-3.5 h-3.5 text-slate-500 shrink-0" />
-                  <span className="hidden xs:inline">Valores</span>
+                  <span className="hidden sm:inline">Valores</span>
                 </>
               )}
             </button>

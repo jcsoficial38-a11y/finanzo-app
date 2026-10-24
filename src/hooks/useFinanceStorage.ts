@@ -71,7 +71,7 @@ import {
   GoogleDriveBackupPayload,
 } from '../services/googleDriveService';
 
-const DEFAULT_MONTHLY_BUDGET = 3500.0;
+const DEFAULT_MONTHLY_BUDGET = 0;
 
 
 const LEGACY_CAT_MAPPING: Record<string, string> = {
@@ -153,15 +153,13 @@ export function useFinanceStorage() {
     return [];
   });
 
-  // Budgets map: { '2026-09': 3500 }
+  // Budgets map: { '2026-09': 0 }
   const [budgets, setBudgets] = useState<Record<string, number>>(() => {
     const stored = safeGetLocalStorage<Record<string, number> | null>(PERSISTENT_STORAGE_KEYS.BUDGETS, null);
     if (stored && typeof stored === 'object') return stored;
     const backup = getMasterSnapshot();
     if (backup?.budgets) return backup.budgets;
-    return {
-      [getCurrentMonthKey()]: DEFAULT_MONTHLY_BUDGET,
-    };
+    return {};
   });
 
   const [defaultBudget, setDefaultBudget] = useState<number>(() => {
@@ -169,10 +167,10 @@ export function useFinanceStorage() {
     if (typeof stored === 'number' && !isNaN(stored)) return stored;
     const backup = getMasterSnapshot();
     if (typeof backup?.defaultBudget === 'number') return backup.defaultBudget;
-    return DEFAULT_MONTHLY_BUDGET;
+    return 0;
   });
 
-  // Monthly Incomes map: { '2026-10': 5000 }
+  // Monthly Incomes map
   const [monthlyIncomes, setMonthlyIncomes] = useState<Record<string, number>>(() => {
     const stored = safeGetLocalStorage<Record<string, number> | null>(PERSISTENT_STORAGE_KEYS.MONTHLY_INCOMES, null);
     if (stored && typeof stored === 'object') return stored;
@@ -189,19 +187,13 @@ export function useFinanceStorage() {
     return 0;
   });
 
-  // Category Budgets: { [categoryId]: number }
+  // Category Budgets: { [categoryId]: number } (Inicia 100% limpo)
   const [categoryBudgets, setCategoryBudgets] = useState<Record<string, number>>(() => {
     const stored = safeGetLocalStorage<Record<string, number> | null>(PERSISTENT_STORAGE_KEYS.CATEGORY_BUDGETS, null);
     if (stored && typeof stored === 'object') return stored;
     const backup = getMasterSnapshot();
     if (backup?.categoryBudgets) return backup.categoryBudgets;
-    return {
-      'exp-moradia': 1500,
-      'exp-mercado': 700,
-      'exp-transporte': 250,
-      'exp-lazer': 300,
-      'exp-contas': 400,
-    };
+    return {};
   });
 
   // User Profile

@@ -18,23 +18,18 @@ export const USER_PROFILE_STORAGE_KEYS = [
 export const PROFILE_UPDATE_EVENT = 'finanzo_user_profile_updated';
 
 export const DEFAULT_USER_PROFILE: UserProfile = {
-  name: 'JC',
-  login: '@jc',
+  name: '',
+  login: '',
   avatarUrl: '',
   avatarColor: '#7dd3fc',
   bio: '',
-  joinedDate: 'Setembro 2026',
+  joinedDate: '',
 };
 
 /**
- * Calculates correct 2-letter uppercase initials from full name or falls back to 'JC'
- * Examples:
- * - "Julio Cesar" -> "JC"
- * - "JC" -> "JC"
- * - "Julio" -> "JU"
- * - "Usuário" -> "JC" (replaces generic placeholder with real initials)
+ * Calculates correct 2-letter uppercase initials from full name or falls back to 'FP'
  */
-export function calculateInitials(name?: string, fallback = 'JC'): string {
+export function calculateInitials(name?: string, fallback = 'FP'): string {
   if (!name || typeof name !== 'string') return fallback;
   const clean = name.trim();
   if (!clean || clean.toLowerCase() === 'usuário' || clean.toLowerCase() === 'usuario') {
@@ -78,12 +73,12 @@ export function getStoredUserProfile(): UserProfile {
 
           if (isRealName || hasPhoto) {
             return {
-              name: parsed.name?.trim() || 'JC',
-              login: parsed.login?.trim() || '@jc',
+              name: parsed.name?.trim() || '',
+              login: parsed.login?.trim() || '',
               avatarUrl: parsed.avatarUrl || '',
               avatarColor: parsed.avatarColor || '#7dd3fc',
               bio: parsed.bio || '',
-              joinedDate: parsed.joinedDate || 'Setembro 2026',
+              joinedDate: parsed.joinedDate || '',
               themeColor: parsed.themeColor,
             };
           }
@@ -119,16 +114,16 @@ export function getStoredUserProfile(): UserProfile {
     if (firebaseUser) {
       const authName = firebaseUser.displayName?.trim();
       const authPhoto = firebaseUser.photoURL || '';
-      const authLogin = firebaseUser.email ? `@${firebaseUser.email.split('@')[0]}` : '@jc';
+      const authLogin = firebaseUser.email ? `@${firebaseUser.email.split('@')[0]}` : '';
 
       if (authName || authPhoto) {
         return {
-          name: authName || 'JC',
+          name: authName || '',
           login: authLogin,
           avatarUrl: authPhoto,
           avatarColor: '#7dd3fc',
           bio: '',
-          joinedDate: 'Setembro 2026',
+          joinedDate: '',
         };
       }
     }
@@ -145,16 +140,16 @@ export function getStoredUserProfile(): UserProfile {
         if (parsed && typeof parsed === 'object' && parsed.name) {
           const finalName =
             parsed.name.trim().toLowerCase() === 'usuário' || parsed.name.trim().toLowerCase() === 'usuario'
-              ? 'JC'
+              ? ''
               : parsed.name.trim();
 
           return {
             name: finalName,
-            login: parsed.login || '@jc',
+            login: parsed.login || '',
             avatarUrl: parsed.avatarUrl || '',
             avatarColor: parsed.avatarColor || '#7dd3fc',
             bio: parsed.bio || '',
-            joinedDate: parsed.joinedDate || 'Setembro 2026',
+            joinedDate: parsed.joinedDate || '',
           };
         }
       }
@@ -175,12 +170,12 @@ export function saveStoredUserProfile(profile: UserProfile): void {
 
   const sanitized: UserProfile = {
     ...profile,
-    name: profile.name.trim() || 'JC',
-    login: profile.login.trim() || '@jc',
+    name: profile.name?.trim() || '',
+    login: profile.login?.trim() || '',
     avatarUrl: profile.avatarUrl || '',
     avatarColor: profile.avatarColor || '#7dd3fc',
     bio: profile.bio || '',
-    joinedDate: profile.joinedDate || 'Setembro 2026',
+    joinedDate: profile.joinedDate || '',
   };
 
   const serialized = JSON.stringify(sanitized);
