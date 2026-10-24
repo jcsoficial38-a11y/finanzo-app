@@ -427,8 +427,8 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
               <User className="w-4 h-4" />
             </div>
             <div>
-              <h3 className="font-bold text-slate-800 text-sm">Perfil & Configurações</h3>
-              <p className="text-[11px] text-slate-400">Preferências, segurança e sincronização</p>
+              <h3 className="font-bold text-slate-800 text-sm">Perfil & Segurança</h3>
+              <p className="text-[11px] text-slate-400">Nome, senha, biometria e dados</p>
             </div>
           </div>
           <button

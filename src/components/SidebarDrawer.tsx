@@ -6,12 +6,10 @@ import {
   PieChart,
   Tags,
   User,
-  Sliders,
   Database,
   Download,
   Upload,
   Shield,
-  Settings,
   Check,
   AlertCircle,
 } from 'lucide-react';
@@ -25,7 +23,7 @@ interface SidebarDrawerProps {
   onChangeTab: (tab: ActiveTab) => void;
   profile: UserProfile;
   onOpenProfileModal: () => void;
-  onOpenBudgetModal: () => void;
+  onOpenBudgetModal?: () => void;
   onOpenCategoryModal: () => void;
   onExportBackup?: () => any;
   onImportBackup?: (file: File) => Promise<{ success: boolean; message: string; count?: number }>;
@@ -145,59 +143,44 @@ export const SidebarDrawer: React.FC<SidebarDrawerProps> = ({
           </div>
 
           {/* CABEÇALHO DO PERFIL (100% OFFLINE / LOCAL) */}
-          <div className="bg-slate-50/90 rounded-2xl border border-slate-200/80 p-3.5 space-y-3 shadow-2xs">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3 min-w-0">
-                {/* Avatar Circular */}
-                <div className="relative shrink-0">
-                  <div
-                    className="w-11 h-11 rounded-full flex items-center justify-center overflow-hidden border-2 border-white shadow-xs"
-                    style={{
-                      backgroundColor: displayAvatarUrl ? 'transparent' : (profile.avatarColor || '#7dd3fc'),
-                    }}
-                  >
-                    {displayAvatarUrl ? (
-                      <img
-                        src={displayAvatarUrl}
-                        alt={displayName}
-                        className="w-full h-full object-cover"
-                      />
-                    ) : (
-                      <span className="text-sm font-bold text-slate-800 tracking-tight">
-                        {displayInitials}
-                      </span>
-                    )}
-                  </div>
-                </div>
-
-                {/* Name & Login */}
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-1.5">
-                    <p className="text-xs font-bold text-slate-900 truncate leading-tight">
-                      {displayName}
-                    </p>
-                    <span className="px-1.5 py-0.2 text-[9px] font-bold rounded-md bg-emerald-100 text-emerald-800 border border-emerald-200/80 shrink-0">
-                      Offline
+          <div className="bg-slate-50/90 rounded-2xl border border-slate-200/80 p-3.5 shadow-2xs">
+            <div className="flex items-center gap-3 min-w-0">
+              {/* Avatar Circular */}
+              <div className="relative shrink-0">
+                <div
+                  className="w-11 h-11 rounded-full flex items-center justify-center overflow-hidden border-2 border-white shadow-xs"
+                  style={{
+                    backgroundColor: displayAvatarUrl ? 'transparent' : (profile.avatarColor || '#7dd3fc'),
+                  }}
+                >
+                  {displayAvatarUrl ? (
+                    <img
+                      src={displayAvatarUrl}
+                      alt={displayName}
+                      className="w-full h-full object-cover"
+                    />
+                  ) : (
+                    <span className="text-sm font-bold text-slate-800 tracking-tight">
+                      {displayInitials}
                     </span>
-                  </div>
-                  <p className="text-[10px] text-slate-500 truncate mt-0.5">
-                    {displayEmail}
-                  </p>
+                  )}
                 </div>
               </div>
 
-              {/* Botão de abrir modal de Perfil */}
-              <button
-                type="button"
-                onClick={() => {
-                  onClose();
-                  onOpenProfileModal();
-                }}
-                title="Configurações & Perfil"
-                className="p-1.5 rounded-xl hover:bg-slate-200/70 text-slate-500 hover:text-slate-800 transition-colors cursor-pointer"
-              >
-                <Settings className="w-4 h-4" />
-              </button>
+              {/* Name & Login */}
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-1.5">
+                  <p className="text-xs font-bold text-slate-900 truncate leading-tight">
+                    {displayName}
+                  </p>
+                  <span className="px-1.5 py-0.2 text-[9px] font-bold rounded-md bg-emerald-100 text-emerald-800 border border-emerald-200/80 shrink-0">
+                    Offline
+                  </span>
+                </div>
+                <p className="text-[10px] text-slate-500 truncate mt-0.5">
+                  {displayEmail}
+                </p>
+              </div>
             </div>
           </div>
 
@@ -344,20 +327,8 @@ export const SidebarDrawer: React.FC<SidebarDrawerProps> = ({
               }}
               className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-semibold text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
             >
-              <User className="w-4 h-4 text-slate-500" />
+              <User className="w-4 h-4 text-teal-600" />
               <span>Perfil & Segurança</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => {
-                onClose();
-                onOpenBudgetModal();
-              }}
-              className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-semibold text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
-            >
-              <Sliders className="w-4 h-4 text-slate-500" />
-              <span>Metas & Orçamento</span>
             </button>
           </div>
         </div>
