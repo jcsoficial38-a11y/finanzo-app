@@ -85,16 +85,19 @@ export default function App() {
   const [isBudgetModalOpen, setIsBudgetModalOpen] = useState(false);
   const [isCategoryModalOpen, setIsCategoryModalOpen] = useState(false);
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
-  const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [toastMessage, setToastMessage] = useState<{ title: string; subtitle?: string } | null>(null);
   const toastTimerRef = React.useRef<NodeJS.Timeout | null>(null);
 
   const handleQuickSave = () => {
-    exportBackup();
-    setToastMessage('Dados salvos com sucesso no seu celular!');
+    const fileName = exportBackup();
+    setToastMessage({
+      title: 'Dados salvos com sucesso no seu celular!',
+      subtitle: fileName ? `Arquivo ${fileName} baixado` : 'Arquivo salvo na pasta Downloads',
+    });
     if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
     toastTimerRef.current = setTimeout(() => {
       setToastMessage(null);
-    }, 3500);
+    }, 4000);
   };
 
   // 4-Digit PIN & Biometric Lock State:
@@ -453,8 +456,10 @@ export default function App() {
             <span className="text-base">💾</span>
           </div>
           <div className="flex-1 min-w-0">
-            <p className="text-xs font-bold leading-snug">{toastMessage}</p>
-            <p className="text-[10px] text-emerald-100">Backup backup_app.json baixado</p>
+            <p className="text-xs font-bold leading-snug">{toastMessage.title}</p>
+            {toastMessage.subtitle && (
+              <p className="text-[10px] text-emerald-100 truncate">{toastMessage.subtitle}</p>
+            )}
           </div>
           <button
             type="button"

@@ -66,7 +66,7 @@ interface ProfileModalProps {
   currentBudget: number;
   onUpdateProfile: (updates: Partial<UserProfile>) => void;
   onExportCSV?: () => void;
-  onExportBackup?: () => void;
+  onExportBackup?: () => any;
   onImportBackup?: (file: File) => Promise<{ success: boolean; message: string; count?: number }>;
   onPinChange?: () => void;
   onClearTransactions?: () => void | Promise<void>;
@@ -170,12 +170,12 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
 
   if (!isOpen) return null;
 
-  // Exportar Backup Local Instantâneo (backup_app.json)
+  // Exportar Backup Local Instantâneo (backup_financas_AAAA-MM-DD.json)
   const handleExportBackupClick = () => {
     if (onExportBackup) {
-      onExportBackup();
+      const fileName = onExportBackup();
       setBackupFeedback({
-        message: 'Arquivo backup_app.json gerado e baixado com sucesso!',
+        message: fileName ? `Arquivo ${fileName} baixado com sucesso!` : 'Backup baixado com sucesso!',
         isError: false,
       });
       setTimeout(() => setBackupFeedback(null), 4000);
@@ -979,13 +979,13 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
                     <Download className="w-4 h-4 text-teal-600" />
                   </div>
                   <span className="text-[10px] font-bold text-teal-700 bg-teal-50 px-2 py-0.5 rounded-md border border-teal-100">
-                    backup_app.json
+                    .json com data
                   </span>
                 </div>
                 <div>
                   <p className="text-xs font-bold text-slate-800">Exportar Backup</p>
                   <p className="text-[10px] text-slate-500 leading-snug mt-0.5">
-                    Baixa o arquivo com todos os lançamentos, despesas, categorias, nome e foto.
+                    Baixa o arquivo backup_financas_AAAA-MM-DD.json com todos os seus dados.
                   </p>
                 </div>
               </button>
@@ -1010,7 +1010,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
                     {isImporting ? 'Restaurando...' : 'Importar Backup'}
                   </p>
                   <p className="text-[10px] text-slate-500 leading-snug mt-0.5">
-                    Selecione seu backup_app.json para restaurar o aplicativo em 1 segundo.
+                    Selecione um arquivo de backup (.json) para restaurar o aplicativo em 1 segundo.
                   </p>
                 </div>
               </button>

@@ -27,9 +27,9 @@ interface SidebarDrawerProps {
   onOpenProfileModal: () => void;
   onOpenBudgetModal: () => void;
   onOpenCategoryModal: () => void;
-  onExportBackup?: () => void;
+  onExportBackup?: () => any;
   onImportBackup?: (file: File) => Promise<{ success: boolean; message: string; count?: number }>;
-  onQuickSave?: () => void;
+  onQuickSave?: () => any;
 }
 
 export const SidebarDrawer: React.FC<SidebarDrawerProps> = ({
@@ -66,11 +66,14 @@ export const SidebarDrawer: React.FC<SidebarDrawerProps> = ({
   const handleExport = () => {
     if (onQuickSave) {
       onQuickSave();
-      setDrawerFeedback({ message: 'Backup backup_app.json baixado!', isError: false });
+      setDrawerFeedback({ message: 'Backup baixado com sucesso!', isError: false });
       setTimeout(() => setDrawerFeedback(null), 3000);
     } else if (onExportBackup) {
-      onExportBackup();
-      setDrawerFeedback({ message: 'Backup backup_app.json baixado!', isError: false });
+      const fileName = onExportBackup();
+      setDrawerFeedback({
+        message: fileName ? `${fileName} baixado!` : 'Backup baixado com sucesso!',
+        isError: false,
+      });
       setTimeout(() => setDrawerFeedback(null), 3000);
     }
   };
@@ -249,7 +252,7 @@ export const SidebarDrawer: React.FC<SidebarDrawerProps> = ({
                 type="button"
                 onClick={handleExport}
                 className="py-2 px-2.5 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 flex items-center justify-center gap-1.5 transition-colors cursor-pointer shadow-2xs"
-                title="Baixar backup_app.json"
+                title="Baixar backup (.json) com data atual"
               >
                 <Download className="w-3.5 h-3.5 text-teal-600 shrink-0" />
                 <span>Exportar</span>
@@ -260,7 +263,7 @@ export const SidebarDrawer: React.FC<SidebarDrawerProps> = ({
                 onClick={() => fileInputRef.current?.click()}
                 disabled={isImporting}
                 className="py-2 px-2.5 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 flex items-center justify-center gap-1.5 transition-colors cursor-pointer shadow-2xs disabled:opacity-60"
-                title="Restaurar backup_app.json"
+                title="Restaurar backup (.json)"
               >
                 <Upload className="w-3.5 h-3.5 text-sky-600 shrink-0" />
                 <span>{isImporting ? 'Lendo...' : 'Importar'}</span>
